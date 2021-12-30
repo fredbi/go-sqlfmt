@@ -15,7 +15,6 @@ const (
 // Case Clause.
 type Case struct {
 	elementReindenter
-	hasCommaBefore bool
 }
 
 func NewCase(element []Reindenter, opts ...Option) *Case {
@@ -47,14 +46,48 @@ func (c *Case) writeCase(buf *bytes.Buffer, token lexer.Token, indent int) error
 func (c *Case) writeCaseWithCommaBefore(buf *bytes.Buffer, token lexer.Token, indent int) {
 	switch token.Type {
 	case lexer.CASE:
-		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue(),
+		))
 	case lexer.WHEN, lexer.ELSE:
-		buf.WriteString(fmt.Sprintf("%s%s%s%s%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent), DoubleWhiteSpace, WhiteSpace, WhiteSpace, DoubleWhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s%s%s%s%s%s",
+			NewLine,
+			strings.Repeat(DoubleWhiteSpace, indent),
+			DoubleWhiteSpace,
+			WhiteSpace,
+			WhiteSpace,
+			DoubleWhiteSpace,
+			token.FormattedValue(),
+		))
 	case lexer.END:
-		buf.WriteString(fmt.Sprintf("%s%s%s%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent), DoubleWhiteSpace, WhiteSpace, WhiteSpace, token.FormattedValue()))
+		if c.commaStyle == CommaStyleRight {
+			buf.WriteString(fmt.Sprintf(
+				"%s%s%s%s",
+				NewLine,
+				strings.Repeat(DoubleWhiteSpace, indent),
+				DoubleWhiteSpace,
+				token.FormattedValue(),
+			))
+
+			break
+		}
+
+		buf.WriteString(fmt.Sprintf(
+			"%s%s%s%s%s%s",
+			NewLine,
+			strings.Repeat(DoubleWhiteSpace, indent),
+			DoubleWhiteSpace,
+			WhiteSpace,
+			WhiteSpace,
+			token.FormattedValue(),
+		))
 	case lexer.COMMA:
 		buf.WriteString(token.FormattedValue())
 	default:
+		// TODO: cast operator "::" should be processed more cleanly
 		if strings.HasPrefix(token.FormattedValue(), DoubleColumn) {
 			buf.WriteString(token.FormattedValue())
 		} else {
@@ -66,9 +99,23 @@ func (c *Case) writeCaseWithCommaBefore(buf *bytes.Buffer, token lexer.Token, in
 func (c *Case) writeCaseWithoutCommaBefore(buf *bytes.Buffer, token lexer.Token, indent int) {
 	switch token.Type {
 	case lexer.CASE, lexer.END:
-		buf.WriteString(fmt.Sprintf("%s%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent), DoubleWhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s%s%s",
+			NewLine,
+			strings.Repeat(DoubleWhiteSpace, indent),
+			DoubleWhiteSpace,
+			token.FormattedValue(),
+		))
 	case lexer.WHEN, lexer.ELSE:
-		buf.WriteString(fmt.Sprintf("%s%s%s%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent), DoubleWhiteSpace, WhiteSpace, DoubleWhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s%s%s%s%s",
+			NewLine,
+			strings.Repeat(DoubleWhiteSpace, indent),
+			DoubleWhiteSpace,
+			WhiteSpace,
+			DoubleWhiteSpace,
+			token.FormattedValue(),
+		))
 	case lexer.COMMA:
 		buf.WriteString(token.FormattedValue())
 	default:

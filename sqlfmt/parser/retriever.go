@@ -24,14 +24,16 @@ type Retriever struct {
 // Each Retriever have endKeywords in order to stop retrieving.
 func NewRetriever(tokenSource []lexer.Token, opts ...Option) *Retriever {
 	o := defaultOptions(opts...)
-
 	firstTokenType := tokenSource[0].Type
+
 	switch firstTokenType {
 	case lexer.SELECT:
 		return &Retriever{TokenSource: tokenSource, endTokenTypes: lexer.EndOfSelect, options: o}
 	case lexer.FROM:
 		return &Retriever{TokenSource: tokenSource, endTokenTypes: lexer.EndOfFrom, options: o}
 	case lexer.CASE:
+		fmt.Printf("DEBUG: NewRetriever CASE, afterComma: %t\n", o.afterComma)
+
 		return &Retriever{TokenSource: tokenSource, endTokenTypes: lexer.EndOfCase, options: o}
 	case lexer.JOIN, lexer.INNER, lexer.OUTER, lexer.LEFT, lexer.RIGHT, lexer.NATURAL, lexer.CROSS:
 		return &Retriever{TokenSource: tokenSource, endTokenTypes: lexer.EndOfJoin, options: o}
@@ -66,6 +68,8 @@ func NewRetriever(tokenSource []lexer.Token, opts ...Option) *Retriever {
 	case lexer.VALUES:
 		return &Retriever{TokenSource: tokenSource, endTokenTypes: lexer.EndOfValues, options: o}
 	case lexer.FUNCTION:
+		fmt.Printf("DEBUG: NewRetriever FUNCTION, afterComma: %t\n", o.afterComma)
+
 		return &Retriever{TokenSource: tokenSource, endTokenTypes: lexer.EndOfFunction, options: o}
 	case lexer.TYPE:
 		return &Retriever{TokenSource: tokenSource, endTokenTypes: lexer.EndOfTypeCast, options: o}
@@ -78,7 +82,7 @@ func NewRetriever(tokenSource []lexer.Token, opts ...Option) *Retriever {
 	}
 }
 
-// Retrieve Retrieves group of SQL clauses.
+// Retrieve Retrieves a group of SQL clauses.
 //
 // It returns clause group as slice of Reintenter interface and endIdx for setting offset.
 func (r *Retriever) Retrieve() ([]group.Reindenter, int, error) {
@@ -89,9 +93,11 @@ func (r *Retriever) Retrieve() ([]group.Reindenter, int, error) {
 	return r.result, r.endIdx, nil
 }
 
-// appendGroupsToResult appends token to result as Reindenter until endTokenType appears
-// if subGroup is found in the target group, subGroup will be appended to result as a Reindenter, calling itself recursive
-// it returns error if it cannot find any endTokenTypes.
+// appendGroupsToResult appends token to result as Reindenter until endTokenType appears.
+//
+// If a subGroup is found in the target group, subGroup will be appended to result as a Reindenter, calling itself recursively.
+//
+// It returns an error if it cannot find any endTokenTypes.
 func (r *Retriever) appendGroupsToResult() error {
 	var (
 		idx   int
@@ -100,12 +106,15 @@ func (r *Retriever) appendGroupsToResult() error {
 
 	for {
 		if idx >= len(r.TokenSource) {
-			return fmt.Errorf("the retriever may have not found the endToken")
+			return fmt.Errorf("the retriever couldn't find the endToken for clause started with: %q",
+				r.TokenSource[0].Value,
+			)
 		}
 
 		token = r.TokenSource[idx]
 
-		if r.isEndGroup(token, r.endTokenTypes, idx) {
+		if r.isEndGroup(token, idx) {
+			// TODO(fred): SHOUD ADD END, ) HERE? rather than processing this above
 			r.endIdx = idx
 
 			return nil
@@ -113,7 +122,9 @@ func (r *Retriever) appendGroupsToResult() error {
 
 		if subGroupRetriever := r.getSubGroupRetriever(idx); subGroupRetriever != nil {
 			if !containsEndToken(subGroupRetriever.TokenSource, subGroupRetriever.endTokenTypes) {
-				return fmt.Errorf("sub group %s has no end key word", subGroupRetriever.TokenSource[0].Value)
+				return fmt.Errorf("sub group clause started with %q has no end key word",
+					subGroupRetriever.TokenSource[0].Value,
+				)
 			}
 
 			if err := subGroupRetriever.appendGroupsToResult(); err != nil {
@@ -148,9 +159,11 @@ func containsEndToken(tokenSource []lexer.Token, endTokenTypes []lexer.TokenType
 }
 
 // isEndGroup determines if token is the end token.
-func (r *Retriever) isEndGroup(token lexer.Token, _ []lexer.TokenType, idx int) bool {
+func (r *Retriever) isEndGroup(token lexer.Token, idx int) bool {
 	for _, endTokenType := range r.endTokenTypes {
-		// ignore endTokens when first token type is equal to endTokenType because first token type might be a endTokenType. For example "AND","OR"
+		// ignore endTokens when first token type is equal to endTokenType
+		// because first token type might be a endTokenType.
+		// For example "AND","OR"
 		// isRangeOfJoinStart ignores if endTokenType appears in start of Join clause such as LEFT OUTER JOIN, INNER JOIN etc ...
 		if idx == 0 || r.isRangeOfJoinStart(idx) {
 			return false
@@ -171,15 +184,24 @@ func (r *Retriever) getSubGroupRetriever(idx int) *Retriever {
 		return nil
 	}
 
+	firstToken := r.TokenSource[0]
 	token := r.TokenSource[idx]
-	nextToken := r.TokenSource[idx+1]
+	nextToken := r.TokenSource[idx+1] // should always work: trailed by EOF token
 
-	if r.containIrregularGroupMaker(token.Type, idx) {
+	if r.containIrregularGroupMaker(firstToken, token, nextToken) {
+		fmt.Printf("DEBUG: irregular group maker in clause starting with %q|... at %q|%q\n", firstToken.Value, token.Value, nextToken.Value)
+
 		return nil
 	}
 
+	afterComma := idx > 0 && r.TokenSource[idx-1].Type == lexer.COMMA
+
 	if token.Type == lexer.STARTPARENTHESIS && nextToken.Type == lexer.SELECT {
-		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options))
+		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
+		if subR == nil {
+			return nil
+		}
+
 		subR.indentLevel = r.indentLevel
 
 		// if subquery is found, indentLevel of all tokens until ")" will be incremented
@@ -195,7 +217,11 @@ func (r *Retriever) getSubGroupRetriever(idx int) *Retriever {
 		if idx < rangeOfJoinGroupStart {
 			return nil
 		}
-		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options))
+		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
+		if subR == nil {
+			return nil
+		}
+
 		subR.indentLevel = r.indentLevel
 
 		return subR
@@ -203,7 +229,11 @@ func (r *Retriever) getSubGroupRetriever(idx int) *Retriever {
 
 	for _, v := range lexer.TokenTypesOfGroupMaker {
 		if token.Type == v {
-			subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options))
+			subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
+			if subR == nil {
+				return nil
+			}
+
 			subR.indentLevel = r.indentLevel
 
 			return subR
@@ -213,31 +243,37 @@ func (r *Retriever) getSubGroupRetriever(idx int) *Retriever {
 	return nil
 }
 
-func (r *Retriever) containIrregularGroupMaker(ttype lexer.TokenType, idx int) bool {
-	firstTokenOfCurrentGroup := r.TokenSource[0]
+// TODO: this should be cleaned up - there is nothing irregular in these constructs
+//
+// func (r *Retriever) containIrregularGroupMaker(ttype lexer.TokenType, idx int) bool {
+func (r *Retriever) containIrregularGroupMaker(firstToken, token, nextToken lexer.Token) bool {
+	ttype := token.Type
 
 	// in order not to make ORDER BY subGroup in Function group
 	// this is a solution of window function
-	if firstTokenOfCurrentGroup.Type == lexer.FUNCTION && ttype == lexer.ORDER {
+	if firstToken.Type == lexer.FUNCTION && ttype == lexer.ORDER {
 		return true
 	}
+
 	// in order to ignore "(" in TypeCast group
-	if firstTokenOfCurrentGroup.Type == lexer.TYPE && ttype == lexer.STARTPARENTHESIS {
+	if firstToken.Type == lexer.TYPE && ttype == lexer.STARTPARENTHESIS {
 		return true
 	}
 
 	// in order to ignore ORDER BY in window function
-	if firstTokenOfCurrentGroup.Type == lexer.STARTPARENTHESIS && ttype == lexer.ORDER {
+	if firstToken.Type == lexer.STARTPARENTHESIS && ttype == lexer.ORDER {
 		return true
 	}
 
-	if firstTokenOfCurrentGroup.Type == lexer.FUNCTION && (ttype == lexer.STARTPARENTHESIS || ttype == lexer.FROM) {
+	if firstToken.Type == lexer.FUNCTION && (ttype == lexer.STARTPARENTHESIS || ttype == lexer.FROM) {
 		return true
 	}
 
-	if ttype == lexer.TYPE && !(r.TokenSource[idx+1].Type == lexer.STARTPARENTHESIS) {
+	if ttype == lexer.TYPE && !(nextToken.Type == lexer.STARTPARENTHESIS) {
 		return true
 	}
+	/* TODO
+	 */
 
 	return false
 }
@@ -257,20 +293,27 @@ func (r *Retriever) isRangeOfJoinStart(idx int) bool {
 
 // appendSubGroupToResult makes Reindenter from subGroup result and append it to result.
 func (r *Retriever) appendSubGroupToResult(result []group.Reindenter, lev int) error {
-	if subGroup := r.createGroup(result); subGroup != nil {
-		subGroup.IncrementIndentLevel(lev)
-		r.result = append(r.result, subGroup)
-	} else {
+	subGroup, err := r.createGroup(result)
+	if err != nil {
+		return err
+	}
+	if subGroup == nil {
 		return fmt.Errorf("can not make sub group result :%#v", result)
 	}
+
+	subGroup.IncrementIndentLevel(lev)
+	r.result = append(r.result, subGroup)
 
 	return nil
 }
 
 // getNextTokenIdx prepares idx for next token value.
 func (r *Retriever) getNextTokenIdx(ttype lexer.TokenType, idx int) int {
-	// if subGroup is PARENTHESIS group or CASE group, endIdx will be index of "END" or ")"
+	// if subGroup is PARENTHESIS group or CASE group, endIdx will be index of "END" or ")".
+	//
 	// In this case, next token must start after those end keyword, so it adds 1 to idx
+	//
+	// TODO: should not that be the same with [...]?
 
 	switch ttype {
 	case lexer.STARTPARENTHESIS, lexer.CASE, lexer.FUNCTION, lexer.TYPE:
@@ -283,75 +326,83 @@ func (r *Retriever) getNextTokenIdx(ttype lexer.TokenType, idx int) int {
 }
 
 // createGroup creates each clause group from slice of tokens, returning it as Reindenter interface.
-func (r *Retriever) createGroup(tokenSource []group.Reindenter) group.Reindenter {
-	firstToken, _ := tokenSource[0].(lexer.Token)
+func (r *Retriever) createGroup(tokenSource []group.Reindenter) (group.Reindenter, error) {
+	if len(tokenSource) == 0 {
+		return nil, errors.New("empty token source passed to createGroup")
+	}
+
+	firstToken, ok := tokenSource[0].(lexer.Token)
+	if !ok {
+		return nil, errors.New("expected tokens to be passed to createGroup")
+	}
 
 	switch firstToken.Type {
 	case lexer.SELECT:
-		return group.NewSelect(tokenSource, r.groupOptions...)
+		return group.NewSelect(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.FROM:
-		return group.NewFrom(tokenSource, r.groupOptions...)
-	case lexer.JOIN, lexer.INNER, lexer.OUTER, lexer.LEFT, lexer.RIGHT, lexer.NATURAL, lexer.CROSS:
-		return group.NewJoin(tokenSource, r.groupOptions...)
+		return group.NewFrom(tokenSource, r.ToGroupOptions()...), nil
+	case lexer.JOIN, lexer.INNER, lexer.OUTER, lexer.LEFT, lexer.RIGHT, lexer.NATURAL, lexer.CROSS, lexer.LATERAL:
+		return group.NewJoin(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.WHERE:
-		return group.NewWhere(tokenSource, r.groupOptions...)
+		return group.NewWhere(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.ANDGROUP:
-		return group.NewAndGroup(tokenSource, r.groupOptions...)
+		return group.NewAndGroup(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.ORGROUP:
-		return group.NewOrGroup(tokenSource, r.groupOptions...)
+		return group.NewOrGroup(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.GROUP:
-		return group.NewGroupBy(tokenSource, r.groupOptions...)
+		return group.NewGroupBy(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.ORDER:
-		return group.NewOrderBy(tokenSource, r.groupOptions...)
+		return group.NewOrderBy(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.HAVING:
-		return group.NewHaving(tokenSource, r.groupOptions...)
+		return group.NewHaving(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.LIMIT, lexer.OFFSET, lexer.FETCH:
-		return group.NewLimitClause(tokenSource, r.groupOptions...)
+		return group.NewLimitClause(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.UNION, lexer.INTERSECT, lexer.EXCEPT:
-		return group.NewTieClause(tokenSource, r.groupOptions...)
+		return group.NewTieClause(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.UPDATE:
-		return group.NewUpdate(tokenSource, r.groupOptions...)
+		return group.NewUpdate(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.SET:
-		return group.NewSet(tokenSource, r.groupOptions...)
+		return group.NewSet(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.RETURNING:
-		return group.NewReturning(tokenSource, r.groupOptions...)
+		return group.NewReturning(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.LOCK:
-		return group.NewLock(tokenSource, r.groupOptions...)
+		return group.NewLock(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.INSERT:
-		return group.NewInsert(tokenSource, r.groupOptions...)
+		return group.NewInsert(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.VALUES:
-		return group.NewValues(tokenSource, r.groupOptions...)
+		return group.NewValues(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.DELETE:
-		return group.NewDelete(tokenSource, r.groupOptions...)
+		return group.NewDelete(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.WITH:
-		return group.NewWith(tokenSource, r.groupOptions...)
-	// endKeyWord of CASE group("END") has to be included in the group, so it is appended to result
+		return group.NewWith(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.CASE:
-		endToken := lexer.Token{Type: lexer.END, Value: "END"}
+		// endKeyWord of CASE group("END") has to be included in the group, so it is appended to result
+		endToken := lexer.MakeToken(lexer.END, "END", lexer.WithOptionsFrom(firstToken))
 		tokenSource = append(tokenSource, endToken)
 
-		return group.NewCase(tokenSource, r.groupOptions...)
-	// endKeyWord of subQuery group (")") has to be included in the group, so it is appended to result
+		return group.NewCase(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.STARTPARENTHESIS:
-		endToken := lexer.Token{Type: lexer.ENDPARENTHESIS, Value: ")"}
+		// endKeyWord of subQuery group (")") has to be included in the group, so it is appended to result
+		endToken := lexer.MakeToken(lexer.ENDPARENTHESIS, ")", lexer.WithOptionsFrom(firstToken))
 		tokenSource = append(tokenSource, endToken)
 
 		if _, isSubQuery := tokenSource[1].(*group.Select); isSubQuery {
-			return group.NewSubquery(tokenSource, r.groupOptions...)
+			return group.NewSubquery(tokenSource, r.ToGroupOptions()...), nil
 		}
 
-		return group.NewParenthesis(tokenSource, r.groupOptions...)
+		return group.NewParenthesis(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.FUNCTION:
-		endToken := lexer.Token{Type: lexer.ENDPARENTHESIS, Value: ")"}
+		fmt.Printf("DEBUG: createGroup: add ) then NewFunction group\n")
+		endToken := lexer.MakeToken(lexer.ENDPARENTHESIS, ")", lexer.WithOptionsFrom(firstToken))
 		tokenSource = append(tokenSource, endToken)
 
-		return group.NewFunction(tokenSource, r.groupOptions...)
+		return group.NewFunction(tokenSource, r.ToGroupOptions()...), nil
 	case lexer.TYPE:
-		endToken := lexer.Token{Type: lexer.ENDPARENTHESIS, Value: ")"}
+		endToken := lexer.MakeToken(lexer.ENDPARENTHESIS, ")", lexer.WithOptionsFrom(firstToken))
 		tokenSource = append(tokenSource, endToken)
 
-		return group.NewTypeCast(tokenSource, r.groupOptions...)
+		return group.NewTypeCast(tokenSource, r.ToGroupOptions()...), nil
 	}
 
-	return nil
+	return nil, nil
 }

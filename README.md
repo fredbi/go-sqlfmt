@@ -122,8 +122,9 @@ ORDER BY
 ## Installation
 
 ```bash
-run git clone and go build -o sqlfmt 
+go install github.com/fredbi/go-sqlfmt/cmd/go-sqlfmt@latest
 ```
+
 ## Usage
 
 - Provide flags and input files or directory  
@@ -212,6 +213,7 @@ run git clone and go build -o sqlfmt
 - [x] operators
 - [x] More comprehensive support for Postgres
 - [x] Support for postgis types, operators and functions
+- [ ] CASE reformating bug
 - [ ] Identify operators and beautify expressions
 - [ ] Support SQL comments
 - [ ] Identify bind variables

@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"reflect"
+	"bytes"
 	"testing"
 
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
@@ -18,6 +18,7 @@ func TestNewRetriever(t *testing.T) {
 		{Type: lexer.IDENT, Value: "user"},
 		{Type: lexer.EOF, Value: "EOF"},
 	}
+
 	r := NewRetriever(testingData)
 	want := []lexer.Token{
 		{Type: lexer.SELECT, Value: "SELECT"},
@@ -107,30 +108,71 @@ func TestRetrieve(t *testing.T) {
 				lastIdx: 3,
 			},
 		},
+		{
+			name: "case statement, with comma",
+			source: []lexer.Token{
+				{Type: lexer.CASE, Value: "SELECT"},
+				{Type: lexer.IDENT, Value: "a"},
+				{Type: lexer.COMMA, Value: ","},
+				{Type: lexer.CASE, Value: "CASE"},
+				{Type: lexer.WHEN, Value: "WHEN"},
+				{Type: lexer.RESERVEDVALUE, Value: "TRUE"},
+				{Type: lexer.THEN, Value: "THEN"},
+				{Type: lexer.RESERVEDVALUE, Value: "FALSE"},
+				{Type: lexer.END, Value: "END"},
+				{Type: lexer.EOF, Value: "EOF"},
+			},
+			want: &want{
+				stmt:    []string{"SELECT", "a", ",", "\n  CASE\n     WHEN TRUE THEN FALSE\n  END"},
+				lastIdx: 9,
+			},
+		},
+		{
+			name: "case statement, without comma",
+			source: []lexer.Token{
+				{Type: lexer.CASE, Value: "SELECT"},
+				{Type: lexer.CASE, Value: "CASE"},
+				{Type: lexer.WHEN, Value: "WHEN"},
+				{Type: lexer.RESERVEDVALUE, Value: "TRUE"},
+				{Type: lexer.THEN, Value: "THEN"},
+				{Type: lexer.RESERVEDVALUE, Value: "FALSE"},
+				{Type: lexer.END, Value: "END"},
+				{Type: lexer.EOF, Value: "EOF"},
+			},
+			want: &want{
+				stmt:    []string{"SELECT", "\n  CASE\n     WHEN TRUE THEN FALSE\n  END"},
+				lastIdx: 7,
+			},
+		},
 	}
-	for _, tt := range tests {
+
+	for _, toPin := range tests {
+		tt := toPin
 		t.Run(tt.name, func(t *testing.T) {
+			// t.Parallel()
+
 			var (
 				gotStmt    []string
 				gotLastIdx int
 			)
-			r := &Retriever{TokenSource: tt.source, endTokenTypes: tt.endTokenTypes}
+			r := NewRetriever(tt.source)
+			require.NotNil(t, r)
+
 			reindenters, gotLastIdx, err := r.Retrieve()
-			if err != nil {
-				t.Errorf("ERROR:%#v", err)
-			}
+			require.NoError(t, err)
 
 			for _, v := range reindenters {
 				if tok, ok := v.(lexer.Token); ok {
 					gotStmt = append(gotStmt, tok.Value)
+				} else {
+					var buf bytes.Buffer
+					require.NoError(t, v.Reindent(&buf))
+					gotStmt = append(gotStmt, buf.String())
 				}
 			}
 
-			if !reflect.DeepEqual(gotStmt, tt.want.stmt) {
-				t.Errorf("want %v, got %v", tt.want.stmt, gotStmt)
-			} else if gotLastIdx != tt.want.lastIdx {
-				t.Errorf("want %v, got %v", tt.want.lastIdx, gotLastIdx)
-			}
+			require.EqualValues(t, tt.want.stmt, gotStmt)
+			require.Equal(t, tt.want.lastIdx, gotLastIdx)
 		})
 	}
 }

@@ -1,37 +1,42 @@
 package parser
 
 import (
+	"fmt"
+
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
 	"github.com/fredbi/go-sqlfmt/sqlfmt/parser/group"
 	"github.com/pkg/errors"
 )
 
 // TODO: calling each Retrieve function is not smart, so should be refactored
+// TODO(fred): I assume we could start with a retriever at the top level...
 
-// ParseTokens parses Tokens, creating slice of Reindenter
-// each Reindenter is group of SQL Clause such as SelectGroup, FromGroup ...etc.
+// ParseTokens parses Tokens, creating slice of Reindenter's.
+//
+// Each Reindenter is group of SQL clauses such as SelectGroup, FromGroup ...etc.
 func ParseTokens(tokens []lexer.Token, opts ...Option) ([]group.Reindenter, error) {
-	if !isSQL(tokens[0].Type) {
-		return nil, errors.New("can not parse no sql statement")
+	if err := isStartSupportedClause(tokens[0]); err != nil {
+		return nil, err
 	}
 
 	var (
-		offset int
 		result []group.Reindenter
 	)
 
-	for {
-		if tokens[offset].Type == lexer.EOF {
-			break
-		}
+	for offset := 0; tokens[offset].Type != lexer.EOF; {
+		afterComma := offset > 0 && tokens[offset-1].Type == lexer.COMMA
 
-		r := NewRetriever(tokens[offset:], opts...)
-		element, endIdx, err := r.Retrieve()
+		r := NewRetriever(tokens[offset:], append(opts, withAfterComma(afterComma))...)
+		elements, endIdx, err := r.Retrieve()
 		if err != nil {
 			return nil, errors.Wrap(err, "ParseTokens failed")
 		}
 
-		group := r.createGroup(element)
+		group, err := r.createGroup(elements)
+		if err != nil {
+			return nil, err
+		}
+
 		result = append(result, group)
 
 		offset += endIdx
@@ -40,11 +45,24 @@ func ParseTokens(tokens []lexer.Token, opts ...Option) ([]group.Reindenter, erro
 	return result, nil
 }
 
-func isSQL(ttype lexer.TokenType) bool {
-	return ttype == lexer.SELECT ||
+// isStartSupportedClause picks valid SQL statement starters.
+//
+// NOTE: unsupported at this moment:
+//   * DDL statements
+//   * EXECUTE
+//   * EXPLAIN
+//   * PREPARE
+//.
+func isStartSupportedClause(token lexer.Token) error {
+	ttype := token.Type
+	if ttype == lexer.SELECT ||
 		ttype == lexer.UPDATE ||
 		ttype == lexer.DELETE ||
 		ttype == lexer.INSERT ||
 		ttype == lexer.LOCK ||
-		ttype == lexer.WITH
+		ttype == lexer.WITH {
+		return nil
+	}
+
+	return fmt.Errorf("can not parse: not a valid start of sql statement: %q", token.Value)
 }

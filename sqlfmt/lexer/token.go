@@ -160,6 +160,8 @@ var (
 )
 
 func init() {
+	// TODO: those defs should belong to the parser pkg
+
 	TokenTypesOfGroupMaker = []TokenType{
 		SELECT, CASE, FROM, WHERE, ORDER, GROUP, LIMIT,
 		ANDGROUP, ORGROUP, HAVING,

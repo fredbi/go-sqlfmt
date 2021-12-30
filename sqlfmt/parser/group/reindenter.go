@@ -203,9 +203,12 @@ func write(buf *bytes.Buffer, token lexer.Token, indent int) error {
 		buf.WriteString(token.FormattedValue())
 	case token.Type == lexer.DO:
 		buf.WriteString(fmt.Sprintf("%s%s%s", NewLine, token.FormattedValue(), WhiteSpace))
+
 	case strings.HasPrefix(token.FormattedValue(), "::"):
+		// TODO: cleaner processing of case operator '::'
 		buf.WriteString(token.FormattedValue())
 	case token.Type == lexer.WITH:
+		// TODO: isn't that handled by group?
 		buf.WriteString(fmt.Sprintf("%s%s", NewLine, token.FormattedValue()))
 	default:
 		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))

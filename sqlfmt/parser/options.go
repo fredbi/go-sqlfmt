@@ -8,8 +8,17 @@ type (
 
 	options struct {
 		groupOptions []group.Option
+		afterComma   bool
 	}
 )
+
+func (o *options) ToGroupOptions() []group.Option {
+	res := make([]group.Option, 0, len(o.groupOptions)+1)
+	res = append(res, o.groupOptions...)
+	res = append(res, group.WithHasCommaBefore(o.afterComma))
+
+	return res
+}
 
 func defaultOptions(opts ...Option) *options {
 	o := &options{}
@@ -30,6 +39,17 @@ func WithGroupOptions(groupOptions ...group.Option) Option {
 
 func withOptions(o *options) Option {
 	return func(opts *options) {
+		if o == nil {
+			o = defaultOptions()
+		}
 		*opts = *o
+	}
+}
+
+// withAfterComma produces some formatting context about the position of
+// a group following a comma or not.
+func withAfterComma(afterComma bool) Option {
+	return func(opts *options) {
+		opts.afterComma = afterComma
 	}
 }
