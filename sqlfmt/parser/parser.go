@@ -5,42 +5,79 @@ import (
 
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
 	"github.com/fredbi/go-sqlfmt/sqlfmt/parser/group"
-	"github.com/pkg/errors"
 )
+
+type Parser struct {
+	offset int
+	tokens []lexer.Token
+	*options
+}
+
+// New SQL parser.
+func New(opts ...Option) *Parser {
+	o := defaultOptions(opts...)
+
+	return &Parser{
+		options: o,
+	}
+}
 
 // TODO: calling each Retrieve function is not smart, so should be refactored
 // TODO(fred): I assume we could start with a retriever at the top level...
 
 // ParseTokens parses Tokens, creating slice of Reindenter's.
 //
-// Each Reindenter is group of SQL clauses such as SelectGroup, FromGroup ...etc.
-func ParseTokens(tokens []lexer.Token, opts ...Option) ([]group.Reindenter, error) {
+// Each Reindenter is a group of SQL clauses such as SelectGroup, FromGroup ...etc.
+func (p *Parser) Parse(tokens []lexer.Token) ([]group.Reindenter, error) {
 	if err := isStartSupportedClause(tokens[0]); err != nil {
 		return nil, err
 	}
+	p.tokens = tokens
 
-	var (
-		result []group.Reindenter
-	)
+	return p.parseTokens()
+}
 
-	for offset := 0; tokens[offset].Type != lexer.EOF; {
-		afterComma := offset > 0 && tokens[offset-1].Type == lexer.COMMA
+func (p *Parser) isAfterComma() bool {
+	return p.offset > 0 && p.tokens[p.offset-1].Type == lexer.COMMA
+}
 
-		r := NewRetriever(tokens[offset:], append(opts, withAfterComma(afterComma))...)
-		elements, endIdx, err := r.Retrieve()
-		if err != nil {
-			return nil, errors.Wrap(err, "ParseTokens failed")
-		}
-
-		group, err := r.createGroup(elements)
-		if err != nil {
-			return nil, err
-		}
-
-		result = append(result, group)
-
-		offset += endIdx
+func (p *Parser) parseTokens() ([]group.Reindenter, error) {
+	if len(p.tokens) == 0 || p.offset >= len(p.tokens) || p.tokens[p.offset].Type == lexer.EOF {
+		return nil, nil
 	}
+
+	result := make([]group.Reindenter, 0, len(p.tokens[p.offset:]))
+
+	r := NewRetriever(p.tokens[p.offset:],
+		withOptions(p.options.CloneWithOptions(withAfterComma(p.isAfterComma()))),
+	)
+	if r == nil {
+		return nil, nil
+	}
+
+	// extra groups from tokens starting at this offset
+	elements, endIdx, err := r.Retrieve()
+	if err != nil {
+		return nil, fmt.Errorf("parseTokens failed: %w", err)
+	}
+
+	group, err := r.createGroup(elements)
+	if err != nil {
+		return nil, fmt.Errorf("parseTokens failed to create group: %w", err)
+	}
+
+	if group != nil {
+		result = append(result, group)
+	}
+
+	p.offset += endIdx
+
+	// parse any remaining tokens
+	next, err := p.parseTokens()
+	if err != nil {
+		return nil, err
+	}
+	result = append(result, next...)
 
 	return result, nil
 }

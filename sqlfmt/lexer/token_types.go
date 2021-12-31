@@ -1,5 +1,7 @@
 package lexer
 
+// TODO: move this to some common sql internal package
+
 // TokenType is an enum that represents a kind of token.
 type TokenType int
 

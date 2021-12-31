@@ -8,7 +8,7 @@ type (
 
 	options struct {
 		groupOptions []group.Option
-		afterComma   bool
+		afterComma   bool // TODO: generalize to any contextual information to pass to ReIndenters
 	}
 )
 
@@ -18,6 +18,16 @@ func (o *options) ToGroupOptions() []group.Option {
 	res = append(res, group.WithHasCommaBefore(o.afterComma))
 
 	return res
+}
+
+func (o *options) CloneWithOptions(opts ...Option) *options {
+	c := *o
+
+	for _, apply := range opts {
+		apply(&c)
+	}
+
+	return &c
 }
 
 func defaultOptions(opts ...Option) *options {

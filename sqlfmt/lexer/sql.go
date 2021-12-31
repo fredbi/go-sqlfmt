@@ -9,6 +9,8 @@ import (
 	iradix "github.com/hashicorp/go-immutable-radix"
 )
 
+// TODO: move this to some common sql internal package
+
 // SQLRegistry knows the extra SQL tokens to be registered by the lexer.
 //
 // Common SQL keywords are known to the lexer: registries are useful to add
