@@ -6,9 +6,10 @@ type (
 	Option func(*options)
 
 	options struct {
-		IndentLevel    int
-		commaStyle     CommaStyle
-		hasCommaBefore bool
+		IndentLevel          int
+		commaStyle           CommaStyle
+		hasCommaBefore       bool
+		hasParenthesisBefore bool
 	}
 )
 
@@ -45,5 +46,12 @@ func WithCommaStyle(style CommaStyle) Option {
 func WithHasCommaBefore(enabled bool) Option {
 	return func(opts *options) {
 		opts.hasCommaBefore = enabled
+	}
+}
+
+// WithHasParenthesisBefore instructs the group about the parenthesis-specific indentation context.
+func WithHasParenthesisBefore(enabled bool) Option {
+	return func(opts *options) {
+		opts.hasParenthesisBefore = enabled
 	}
 }

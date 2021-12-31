@@ -175,7 +175,7 @@ go install github.com/fredbi/go-sqlfmt/cmd/go-sqlfmt@latest
       fmt.Println(`select * from xxx`)
   }
 
-  // nor are statements surrounded with double quotes
+  // and neither are statements surrounded with double quotes
   func sendSQL() int {
       var id int
       var db *sql.DB
@@ -198,12 +198,6 @@ go install github.com/fredbi/go-sqlfmt/cmd/go-sqlfmt@latest
   - Currently being formatted into this: `[[ xx], xx]`
   - Ideally, it should be formatted into this: `[[xx], xx]`
 
-- Nested functions such as `sum(average(xxx))`
-  - Currently being formatted into this: `SUM( AVERAGE(xxx))`
-  - Ideally, it should be formatted into this: `SUM(AVERAGE(xxx))`
-  
- 
-
 ## Future Work
 
 - [x] goroutine-safe
@@ -213,7 +207,8 @@ go install github.com/fredbi/go-sqlfmt/cmd/go-sqlfmt@latest
 - [x] operators
 - [x] More comprehensive support for Postgres
 - [x] Support for postgis types, operators and functions
-- [ ] CASE reformating bug
+- [x] CASE reformating bug
+- [x] Nested functions reformating bug
 - [ ] Identify operators and beautify expressions
 - [ ] Support SQL comments
 - [ ] Identify bind variables

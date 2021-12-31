@@ -42,7 +42,10 @@ func (p *Parser) parseTokens() ([]group.Reindenter, error) {
 	result := make([]group.Reindenter, 0, len(p.tokens[p.offset:]))
 
 	r := NewRetriever(p.tokens[p.offset:],
-		withOptions(p.options.CloneWithOptions(withAfterComma(p.isAfterComma()))),
+		withOptions(p.options.CloneWithOptions(
+			withAfterComma(p.isAfterComma()),
+			withAfterParenthesis(p.isAfterParenthesis()),
+		)),
 	)
 	if r == nil {
 		return nil, nil
@@ -78,6 +81,11 @@ func (p *Parser) parseTokens() ([]group.Reindenter, error) {
 // isAfterComma provides context about the current group relative to a comma.
 func (p *Parser) isAfterComma() bool {
 	return p.offset > 0 && p.tokens[p.offset-1].Type == lexer.COMMA
+}
+
+// isAfterParenthesis provides context about the current group relative to an opening parenthesis.
+func (p *Parser) isAfterParenthesis() bool {
+	return p.offset > 0 && p.tokens[p.offset-1].Type == lexer.STARTPARENTHESIS
 }
 
 // isStartSupportedClause picks valid SQL statement starters.

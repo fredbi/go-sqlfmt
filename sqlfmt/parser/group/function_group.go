@@ -56,9 +56,25 @@ func (f *Function) writeFunction(buf *bytes.Buffer, token, prev lexer.Token, ind
 	case prev.Type == lexer.STARTPARENTHESIS || token.Type == lexer.STARTPARENTHESIS || token.Type == lexer.ENDPARENTHESIS:
 		buf.WriteString(token.FormattedValue())
 	case token.Type == lexer.FUNCTION && f.ColumnCount == 0 && f.InColumnArea:
-		buf.WriteString(fmt.Sprintf("%s%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent), DoubleWhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s%s%s",
+			NewLine,
+			strings.Repeat(DoubleWhiteSpace, indent),
+			DoubleWhiteSpace,
+			token.FormattedValue()),
+		)
 	case token.Type == lexer.FUNCTION:
-		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
+		if f.hasParenthesisBefore {
+			buf.WriteString(token.FormattedValue())
+
+			break
+		}
+
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue()),
+		)
 	case token.Type == lexer.COMMA:
 		buf.WriteString(token.FormattedValue())
 	case strings.HasPrefix(token.FormattedValue(), "::"):

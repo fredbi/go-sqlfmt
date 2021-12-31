@@ -36,8 +36,6 @@ func NewRetriever(tokens []lexer.Token, opts ...Option) *Retriever {
 		return nil
 	}
 
-	fmt.Printf("DEBUG: new retriever starting at: %q, ending at: %v\n", tokens[0].Value, endTokenTypes)
-
 	return &Retriever{
 		TokenSource:   tokens,
 		endTokenTypes: endTokenTypes,
@@ -75,7 +73,6 @@ func (r *Retriever) appendGroupsToResult() error {
 
 		if r.isEndGroup(token, idx) {
 			// TODO(fred): SHOULD ADD END, ) HERE? rather than processing this above
-			fmt.Printf("DEBUG: reached end of group: %q\n", token.Value)
 			r.endIdx = idx
 
 			return nil
@@ -99,9 +96,12 @@ func (r *Retriever) appendGroupsToResult() error {
 			return err
 		}
 
-		if err := r.appendSubGroupToResult(subGroupRetriever.result, subGroupRetriever.indentLevel); err != nil {
+		group, err := subGroupRetriever.subGroupResult()
+		if err != nil {
 			return err
 		}
+
+		r.result = append(r.result, group)
 
 		idx = subGroupRetriever.getNextTokenIdx(token.Type, idx)
 	}
@@ -121,6 +121,7 @@ func (r *Retriever) getSubGroupRetriever(idx int) (*Retriever, int) {
 	nextToken := r.TokenSource[idx+1] // should always work: trailed by EOF token
 
 	afterComma := idx > 0 && r.TokenSource[idx-1].Type == lexer.COMMA
+	afterParenthesis := idx > 0 && r.TokenSource[idx-1].Type == lexer.STARTPARENTHESIS
 	_, isJoin := lexer.JoinMakers()[token.Type]
 	_, isGroup := lexer.GroupMakers()[token.Type]
 
@@ -131,17 +132,32 @@ func (r *Retriever) getSubGroupRetriever(idx int) (*Retriever, int) {
 
 		return nil, 1
 
+		/*
+			case nextToken.Type == lexer.OPERATOR && nextToken.Value == "::":
+				// TODO: cast_operator_group
+		*/
+
 	case token.Type == lexer.STARTPARENTHESIS && previousToken.Type == lexer.FUNCTION:
 		return nil, 1
 
 	case token.Type == lexer.FUNCTION && nextToken.Type == lexer.STARTPARENTHESIS:
-		fmt.Printf("DEBUG: function group maker in clause starting with %q|... at %q|%q\n",
-			firstToken.Value, token.Value, nextToken.Value)
+		fmt.Printf("DEBUG: function group maker in clause starting with %q|... at %q|%q, afterParenthesis: %t\n",
+			firstToken.Value,
+			token.Value,
+			nextToken.Value,
+			afterParenthesis,
+		)
 
-		return NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma)), 2
+		return NewRetriever(r.TokenSource[idx:], withOptions(r.options),
+			withAfterComma(afterComma),
+			withAfterParenthesis(afterParenthesis),
+		), 2
 
 	case token.Type == lexer.STARTPARENTHESIS && nextToken.Type == lexer.SELECT:
-		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
+		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options),
+			withAfterComma(afterComma),
+			withAfterParenthesis(afterParenthesis),
+		)
 		if subR == nil {
 			return nil, 1
 		}
@@ -159,7 +175,10 @@ func (r *Retriever) getSubGroupRetriever(idx int) (*Retriever, int) {
 	case isJoin, isGroup:
 		// if group keywords appears in start of join group such as LEFT INNER JOIN, those keywords will be ignored
 		// In this case, "INNER" and "JOIN" are group keyword, but should not make subGroup
-		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
+		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options),
+			withAfterComma(afterComma),
+			withAfterParenthesis(afterParenthesis),
+		)
 		if subR == nil {
 			return nil, 1
 		}
@@ -217,20 +236,20 @@ func (r *Retriever) isRangeOfJoinStart(idx int) bool {
 	return ok
 }
 
-// appendSubGroupToResult makes Reindenter from subGroup result and append it to result.
-func (r *Retriever) appendSubGroupToResult(result []group.Reindenter, lev int) error {
-	subGroup, err := r.createGroup(result)
+// subGroupResult makes a Reindenter from a subgroup.
+func (r *Retriever) subGroupResult() (group.Reindenter, error) {
+	subGroup, err := r.createGroup(r.result)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
 	if subGroup == nil {
-		return fmt.Errorf("can not make sub group result :%#v", result)
+		return nil, fmt.Errorf("can not make sub group from result :%#v", r.result)
 	}
 
-	subGroup.IncrementIndentLevel(lev)
-	r.result = append(r.result, subGroup)
+	subGroup.IncrementIndentLevel(r.indentLevel)
 
-	return nil
+	return subGroup, nil
 }
 
 // getNextTokenIdx prepares idx for next token value.

@@ -7,15 +7,17 @@ type (
 	Option func(*options)
 
 	options struct {
-		groupOptions []group.Option
-		afterComma   bool // TODO: generalize to any contextual information to pass to ReIndenters
+		groupOptions     []group.Option
+		afterComma       bool // TODO: generalize to any contextual information to pass to ReIndenters
+		afterParenthesis bool
 	}
 )
 
 func (o *options) ToGroupOptions() []group.Option {
-	res := make([]group.Option, 0, len(o.groupOptions)+1)
+	res := make([]group.Option, 0, len(o.groupOptions)+2)
 	res = append(res, o.groupOptions...)
 	res = append(res, group.WithHasCommaBefore(o.afterComma))
+	res = append(res, group.WithHasParenthesisBefore(o.afterParenthesis))
 
 	return res
 }
@@ -61,5 +63,13 @@ func withOptions(o *options) Option {
 func withAfterComma(afterComma bool) Option {
 	return func(opts *options) {
 		opts.afterComma = afterComma
+	}
+}
+
+// withAfterParenthesis produces some formatting context about the position of
+// a group following a parentheis or not.
+func withAfterParenthesis(afterParenthesis bool) Option {
+	return func(opts *options) {
+		opts.afterParenthesis = afterParenthesis
 	}
 }

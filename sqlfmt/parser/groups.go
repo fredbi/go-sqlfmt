@@ -10,8 +10,8 @@ import (
 var _ group.Reindenter = lexer.Token{}
 
 func (r *Retriever) getGroupFromTokens(firstToken lexer.Token, tokenSource []group.Reindenter) group.Reindenter {
-	if groupBuilder := getGroupBuilder(firstToken); groupBuilder != nil {
-		return groupBuilder(tokenSource, r.ToGroupOptions()...)
+	if builder := getGroupBuilder(firstToken); builder != nil {
+		return builder(tokenSource, r.ToGroupOptions()...)
 	}
 
 	return nil
