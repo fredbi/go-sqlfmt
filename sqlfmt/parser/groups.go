@@ -1,6 +1,6 @@
 package parser
 
-// TODO: make an augmented token that knows about grouping
+// TODO: make an augmented token that knows about grouping?
 
 import (
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
@@ -17,7 +17,9 @@ func (r *Retriever) getGroupFromTokens(firstToken lexer.Token, tokenSource []gro
 	return nil
 }
 
-func getGroupBuilder(token lexer.Token) func([]group.Reindenter, ...group.Option) group.Reindenter {
+type groupBuilder func([]group.Reindenter, ...group.Option) group.Reindenter
+
+func getGroupBuilder(token lexer.Token) groupBuilder {
 	switch token.Type {
 	case lexer.SELECT:
 		return func(tokenSource []group.Reindenter, opts ...group.Option) group.Reindenter {

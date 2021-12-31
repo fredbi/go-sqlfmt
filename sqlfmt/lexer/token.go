@@ -116,20 +116,3 @@ func (t Token) IsNeedNewLineBefore() bool {
 
 	return false
 }
-
-// IsKeyWordInSelect returns true if token is a keyword in select group.
-func (t Token) IsKeyWordInSelect() bool {
-	return t.Type == SELECT ||
-		t.Type == EXISTS ||
-		t.Type == DISTINCT ||
-		t.Type == DISTINCTROW ||
-		t.Type == INTO ||
-		t.Type == AS ||
-		t.Type == GROUP ||
-		t.Type == ORDER ||
-		t.Type == BY ||
-		t.Type == ON ||
-		t.Type == RETURNING ||
-		t.Type == SET ||
-		t.Type == UPDATE
-}

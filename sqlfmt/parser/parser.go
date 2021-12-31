@@ -22,9 +22,6 @@ func New(opts ...Option) *Parser {
 	}
 }
 
-// TODO: calling each Retrieve function is not smart, so should be refactored
-// TODO(fred): I assume we could start with a retriever at the top level...
-
 // ParseTokens parses Tokens, creating slice of Reindenter's.
 //
 // Each Reindenter is a group of SQL clauses such as SelectGroup, FromGroup ...etc.
@@ -35,10 +32,6 @@ func (p *Parser) Parse(tokens []lexer.Token) ([]group.Reindenter, error) {
 	p.tokens = tokens
 
 	return p.parseTokens()
-}
-
-func (p *Parser) isAfterComma() bool {
-	return p.offset > 0 && p.tokens[p.offset-1].Type == lexer.COMMA
 }
 
 func (p *Parser) parseTokens() ([]group.Reindenter, error) {
@@ -80,6 +73,11 @@ func (p *Parser) parseTokens() ([]group.Reindenter, error) {
 	result = append(result, next...)
 
 	return result, nil
+}
+
+// isAfterComma provides context about the current group relative to a comma
+func (p *Parser) isAfterComma() bool {
+	return p.offset > 0 && p.tokens[p.offset-1].Type == lexer.COMMA
 }
 
 // isStartSupportedClause picks valid SQL statement starters.

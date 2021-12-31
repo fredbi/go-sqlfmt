@@ -14,9 +14,9 @@ func (t Token) EndTokenTypes() map[TokenType]struct{} {
 			WHERE: {},
 			INNER: {}, OUTER: {}, LEFT: {}, RIGHT: {}, JOIN: {},
 			NATURAL: {}, CROSS: {}, LATERAL: {},
-			UNION: {}, INTERSECT: {},
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 			ORDER: {}, GROUP: {},
-			LIMIT: {}, OFFSET: {}, FETCH: {}, EXCEPT: {},
+			LIMIT: {}, OFFSET: {}, FETCH: {},
 			ENDPARENTHESIS: {},
 		}
 	case CASE:
@@ -25,65 +25,63 @@ func (t Token) EndTokenTypes() map[TokenType]struct{} {
 		return map[TokenType]struct{}{
 			WHERE: {},
 			ORDER: {}, GROUP: {},
-			LIMIT: {}, OFFSET: {}, FETCH: {}, EXCEPT: {},
+			LIMIT: {}, OFFSET: {}, FETCH: {},
 			ANDGROUP: {}, ORGROUP: {},
 			LEFT: {}, RIGHT: {}, INNER: {}, OUTER: {},
 			NATURAL: {}, CROSS: {}, LATERAL: {},
-			UNION: {}, INTERSECT: {},
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 			ENDPARENTHESIS: {},
 		}
 	case WHERE:
 		return map[TokenType]struct{}{
 			GROUP: {}, ORDER: {},
-			LIMIT: {}, OFFSET: {}, FETCH: {}, EXCEPT: {},
+			LIMIT: {}, OFFSET: {}, FETCH: {},
 			ANDGROUP: {}, OR: {},
-			UNION:          {},
-			INTERSECT:      {},
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 			RETURNING:      {},
 			ENDPARENTHESIS: {},
 		}
 	case ANDGROUP:
 		return map[TokenType]struct{}{
 			GROUP: {}, ORDER: {},
-			LIMIT: {}, OFFSET: {}, FETCH: {}, EXCEPT: {},
-			UNION: {}, INTERSECT: {},
+			LIMIT: {}, OFFSET: {}, FETCH: {},
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 			ANDGROUP: {}, ORGROUP: {},
 			ENDPARENTHESIS: {},
 		}
 	case ORGROUP:
 		return map[TokenType]struct{}{
 			GROUP: {}, ORDER: {},
-			LIMIT: {}, OFFSET: {}, FETCH: {}, EXCEPT: {},
-			UNION: {}, INTERSECT: {},
+			LIMIT: {}, OFFSET: {}, FETCH: {},
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 			ANDGROUP: {}, ORGROUP: {},
 			ENDPARENTHESIS: {},
 		}
 	case GROUP:
 		return map[TokenType]struct{}{
 			ORDER: {},
-			LIMIT: {}, FETCH: {}, OFFSET: {}, EXCEPT: {},
-			UNION: {}, INTERSECT: {},
+			LIMIT: {}, FETCH: {}, OFFSET: {},
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 			HAVING:         {},
 			ENDPARENTHESIS: {},
 		}
 	case HAVING:
 		return map[TokenType]struct{}{
 			ORDER: {},
-			LIMIT: {}, OFFSET: {}, FETCH: {}, EXCEPT: {},
-			UNION: {}, INTERSECT: {},
+			LIMIT: {}, OFFSET: {}, FETCH: {},
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 			ENDPARENTHESIS: {},
 		}
 	case ORDER:
 		return map[TokenType]struct{}{
 			GROUP: {},
-			LIMIT: {}, FETCH: {}, OFFSET: {}, EXCEPT: {},
-			UNION: {}, INTERSECT: {},
+			LIMIT: {}, FETCH: {}, OFFSET: {},
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 			ENDPARENTHESIS: {},
 		}
 	case LIMIT, FETCH, OFFSET:
 		return map[TokenType]struct{}{
-			UNION: {}, INTERSECT: {},
-			EXCEPT:         {},
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 			ENDPARENTHESIS: {},
 		}
 	case STARTPARENTHESIS:
@@ -136,43 +134,59 @@ func (t Token) EndTokenTypes() map[TokenType]struct{} {
 	}
 }
 
-// token types that contain the keyword to make subGroup.
-var (
-	TokenTypesOfGroupMaker []TokenType
-	TokenTypesOfJoinMaker  []TokenType
-	TokenTypeOfTieClause   []TokenType
-	TokenTypeOfLimitClause []TokenType
-)
-
-func init() {
-	// TODO: those defs should belong to the parser pkg
-
-	TokenTypesOfGroupMaker = []TokenType{
-		SELECT, CASE, FROM, WHERE, ORDER, GROUP, LIMIT,
-		ANDGROUP, ORGROUP, HAVING,
-		UNION, EXCEPT, INTERSECT,
-		FUNCTION,
-		STARTPARENTHESIS,
-		TYPE,
+func GroupMakers() map[TokenType]struct{} {
+	return map[TokenType]struct{}{
+		SELECT: struct{}{},
+		CASE:   struct{}{}, FROM: struct{}{},
+		WHERE: struct{}{},
+		ORDER: struct{}{}, GROUP: struct{}{},
+		LIMIT: struct{}{},
+		UNION: struct{}{}, INTERSECT: struct{}{}, EXCEPT: struct{}{},
+		ANDGROUP: struct{}{}, ORGROUP: struct{}{}, HAVING: struct{}{},
+		FUNCTION:         struct{}{},
+		STARTPARENTHESIS: struct{}{},
+		TYPE:             struct{}{},
 	}
-	TokenTypesOfJoinMaker = []TokenType{
-		JOIN, INNER, OUTER, LEFT, RIGHT, NATURAL, CROSS, LATERAL,
-	}
-	TokenTypeOfTieClause = []TokenType{UNION, INTERSECT, EXCEPT}
-	TokenTypeOfLimitClause = []TokenType{LIMIT, FETCH, OFFSET}
 }
 
-// IsJoinStart determines if ttype is included in TokenTypesOfJoinMaker.
-func (t Token) IsJoinStart() bool {
-	for _, v := range TokenTypesOfJoinMaker {
-		if t.Type == v {
-			return true
-		}
+func JoinMakers() map[TokenType]struct{} {
+	return map[TokenType]struct{}{
+		JOIN: struct{}{}, INNER: struct{}{}, OUTER: struct{}{},
+		LEFT: struct{}{}, RIGHT: struct{}{},
+		NATURAL: struct{}{}, CROSS: struct{}{}, LATERAL: struct{}{},
 	}
-
-	return false
 }
 
+func TieMakers() map[TokenType]struct{} {
+	return map[TokenType]struct{}{
+		UNION: struct{}{}, INTERSECT: struct{}{}, EXCEPT: struct{}{},
+	}
+}
+
+func LimitMakers() map[TokenType]struct{} {
+	return map[TokenType]struct{}{
+		LIMIT: struct{}{}, FETCH: struct{}{}, OFFSET: struct{}{},
+	}
+}
+
+// IsKeywordInSelect returns true if token is a keyword in select group.
+func (t Token) IsKeywordInSelect() bool {
+	return t.Type == SELECT ||
+		t.Type == EXISTS ||
+		t.Type == DISTINCT ||
+		t.Type == DISTINCTROW ||
+		t.Type == INTO ||
+		t.Type == AS ||
+		t.Type == GROUP ||
+		t.Type == ORDER ||
+		t.Type == BY ||
+		t.Type == ON ||
+		t.Type == RETURNING ||
+		t.Type == SET ||
+		t.Type == UPDATE
+}
+
+/*
 // IsTieClauseStart determines if ttype is included in TokenTypesOfTieClause.
 func (t Token) IsTieClauseStart() bool {
 	for _, v := range TokenTypeOfTieClause {
@@ -194,3 +208,4 @@ func (t Token) IsLimitClauseStart() bool {
 
 	return false
 }
+*/

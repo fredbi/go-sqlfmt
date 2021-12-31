@@ -105,42 +105,6 @@ func (r *Retriever) appendGroupsToResult() error {
 	}
 }
 
-func (r *Retriever) isEndToken(token lexer.Token) bool {
-	if token.Type == lexer.EOF {
-		return true
-	}
-
-	if _, ok := r.endTokenTypes[token.Type]; ok {
-		return true
-	}
-
-	return false
-}
-
-// check tokens contain endTokenType.
-func (r *Retriever) containsEndToken() bool {
-	for _, token := range r.TokenSource {
-		if r.isEndToken(token) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isEndGroup determines if token is the end token.
-func (r *Retriever) isEndGroup(token lexer.Token, idx int) bool {
-	// ignore endTokens when first token type is equal to endTokenType
-	// because first token type might be a endTokenType.
-	// For example "AND","OR"
-	// isRangeOfJoinStart ignores if endTokenType appears in start of Join clause such as LEFT OUTER JOIN, INNER JOIN etc ...
-	if idx == 0 || r.isRangeOfJoinStart(idx) {
-		return false
-	}
-
-	return r.isEndToken(token)
-}
-
 // getSubGroupRetriever creates Retriever to retrieve sub group in the target group starting from tokens sliced from idx.
 func (r *Retriever) getSubGroupRetriever(idx int) *Retriever {
 	// when idx is equal to 0, target group itself will be Subgroup, which causes an error
@@ -175,10 +139,10 @@ func (r *Retriever) getSubGroupRetriever(idx int) *Retriever {
 		return subR
 	}
 
-	if token.IsJoinStart() {
+	if _, isJoin := lexer.JoinMakers()[token.Type]; isJoin {
 		// if group keywords appears in start of join group such as LEFT INNER JOIN, those keywords will be ignored
 		// In this case, "INNER" and "JOIN" are group keyword, but should not make subGroup
-		rangeOfJoinGroupStart := 3
+		const rangeOfJoinGroupStart = 3
 		if idx < rangeOfJoinGroupStart {
 			return nil
 		}
@@ -192,17 +156,15 @@ func (r *Retriever) getSubGroupRetriever(idx int) *Retriever {
 		return subR
 	}
 
-	for _, v := range lexer.TokenTypesOfGroupMaker {
-		if token.Type == v {
-			subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
-			if subR == nil {
-				return nil
-			}
-
-			subR.indentLevel = r.indentLevel
-
-			return subR
+	if _, ok := lexer.GroupMakers()[token.Type]; ok {
+		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
+		if subR == nil {
+			return nil
 		}
+
+		subR.indentLevel = r.indentLevel
+
+		return subR
 	}
 
 	return nil
@@ -242,15 +204,14 @@ func (r *Retriever) containIrregularGroupMaker(firstToken, token, nextToken lexe
 
 // if group key words to make join group such as "LEFT" or "OUTER" appear within idx is in range of join group, any keyword must be ignored not be made into a sub group.
 func (r *Retriever) isRangeOfJoinStart(idx int) bool {
-	firstTokenType := r.TokenSource[0].Type
-	for _, v := range lexer.TokenTypesOfJoinMaker {
-		joinStartRange := 3
-		if v == firstTokenType && idx < joinStartRange {
-			return true
-		}
+	const joinStartRange = 3
+	if idx >= joinStartRange {
+		return false
 	}
 
-	return false
+	_, ok := lexer.JoinMakers()[r.TokenSource[0].Type]
+
+	return ok
 }
 
 // appendSubGroupToResult makes Reindenter from subGroup result and append it to result.
@@ -301,4 +262,40 @@ func (r *Retriever) createGroup(tokenSource []group.Reindenter) (group.Reindente
 	group := r.getGroupFromTokens(firstToken, tokenSource)
 
 	return group, nil
+}
+
+func (r *Retriever) isEndToken(token lexer.Token) bool {
+	if token.Type == lexer.EOF {
+		return true
+	}
+
+	if _, ok := r.endTokenTypes[token.Type]; ok {
+		return true
+	}
+
+	return false
+}
+
+// check tokens contain endTokenType.
+func (r *Retriever) containsEndToken() bool {
+	for _, token := range r.TokenSource {
+		if r.isEndToken(token) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isEndGroup determines if token is the end token.
+func (r *Retriever) isEndGroup(token lexer.Token, idx int) bool {
+	// ignore endTokens when first token type is equal to endTokenType
+	// because first token type might be a endTokenType.
+	// For example "AND","OR"
+	// isRangeOfJoinStart ignores if endTokenType appears in start of Join clause such as LEFT OUTER JOIN, INNER JOIN etc ...
+	if idx == 0 || r.isRangeOfJoinStart(idx) {
+		return false
+	}
+
+	return r.isEndToken(token)
 }

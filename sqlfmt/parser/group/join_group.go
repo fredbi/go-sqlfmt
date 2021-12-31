@@ -40,8 +40,9 @@ func (j *Join) Reindent(buf *bytes.Buffer) error {
 }
 
 func (j *Join) writeJoin(buf *bytes.Buffer, token lexer.Token, indent int, isFirst bool) {
+	_, isJoin := lexer.JoinMakers()[token.Type]
 	switch {
-	case isFirst && token.IsJoinStart():
+	case isFirst && isJoin:
 		buf.WriteString(fmt.Sprintf("%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent), token.FormattedValue()))
 	case token.Type == lexer.ON || token.Type == lexer.USING:
 		buf.WriteString(fmt.Sprintf("%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent), token.FormattedValue()))

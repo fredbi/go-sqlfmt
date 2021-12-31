@@ -25,7 +25,7 @@ func separate(rs []Reindenter) []interface{} {
 			case skipRange > 0:
 				skipRange--
 
-			case token.IsKeyWordInSelect():
+			case token.IsKeywordInSelect():
 				// TODO: more elegant
 				if buf.String() != "" {
 					result = append(result, buf.String())
