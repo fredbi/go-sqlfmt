@@ -136,36 +136,36 @@ func (t Token) EndTokenTypes() map[TokenType]struct{} {
 
 func GroupMakers() map[TokenType]struct{} {
 	return map[TokenType]struct{}{
-		SELECT: struct{}{},
-		CASE:   struct{}{}, FROM: struct{}{},
-		WHERE: struct{}{},
-		ORDER: struct{}{}, GROUP: struct{}{},
-		LIMIT: struct{}{},
-		UNION: struct{}{}, INTERSECT: struct{}{}, EXCEPT: struct{}{},
-		ANDGROUP: struct{}{}, ORGROUP: struct{}{}, HAVING: struct{}{},
-		FUNCTION:         struct{}{},
-		STARTPARENTHESIS: struct{}{},
-		TYPE:             struct{}{},
+		SELECT: {},
+		CASE:   {}, FROM: {},
+		WHERE: {},
+		ORDER: {}, GROUP: {},
+		LIMIT: {},
+		UNION: {}, INTERSECT: {}, EXCEPT: {},
+		ANDGROUP: {}, ORGROUP: {}, HAVING: {},
+		FUNCTION:         {},
+		STARTPARENTHESIS: {},
+		TYPE:             {},
 	}
 }
 
 func JoinMakers() map[TokenType]struct{} {
 	return map[TokenType]struct{}{
-		JOIN: struct{}{}, INNER: struct{}{}, OUTER: struct{}{},
-		LEFT: struct{}{}, RIGHT: struct{}{},
-		NATURAL: struct{}{}, CROSS: struct{}{}, LATERAL: struct{}{},
+		JOIN: {}, INNER: {}, OUTER: {},
+		LEFT: {}, RIGHT: {},
+		NATURAL: {}, CROSS: {}, LATERAL: {},
 	}
 }
 
 func TieMakers() map[TokenType]struct{} {
 	return map[TokenType]struct{}{
-		UNION: struct{}{}, INTERSECT: struct{}{}, EXCEPT: struct{}{},
+		UNION: {}, INTERSECT: {}, EXCEPT: {},
 	}
 }
 
 func LimitMakers() map[TokenType]struct{} {
 	return map[TokenType]struct{}{
-		LIMIT: struct{}{}, FETCH: struct{}{}, OFFSET: struct{}{},
+		LIMIT: {}, FETCH: {}, OFFSET: {},
 	}
 }
 

@@ -75,7 +75,7 @@ func (p *Parser) parseTokens() ([]group.Reindenter, error) {
 	return result, nil
 }
 
-// isAfterComma provides context about the current group relative to a comma
+// isAfterComma provides context about the current group relative to a comma.
 func (p *Parser) isAfterComma() bool {
 	return p.offset > 0 && p.tokens[p.offset-1].Type == lexer.COMMA
 }

@@ -36,6 +36,8 @@ func NewRetriever(tokens []lexer.Token, opts ...Option) *Retriever {
 		return nil
 	}
 
+	fmt.Printf("DEBUG: new retriever starting at: %q, ending at: %v\n", tokens[0].Value, endTokenTypes)
+
 	return &Retriever{
 		TokenSource:   tokens,
 		endTokenTypes: endTokenTypes,
@@ -79,10 +81,10 @@ func (r *Retriever) appendGroupsToResult() error {
 			return nil
 		}
 
-		subGroupRetriever := r.getSubGroupRetriever(idx)
+		subGroupRetriever, offset := r.getSubGroupRetriever(idx)
 		if subGroupRetriever == nil {
 			r.result = append(r.result, token)
-			idx++
+			idx += offset
 
 			continue
 		}
@@ -106,29 +108,42 @@ func (r *Retriever) appendGroupsToResult() error {
 }
 
 // getSubGroupRetriever creates Retriever to retrieve sub group in the target group starting from tokens sliced from idx.
-func (r *Retriever) getSubGroupRetriever(idx int) *Retriever {
+func (r *Retriever) getSubGroupRetriever(idx int) (*Retriever, int) {
 	// when idx is equal to 0, target group itself will be Subgroup, which causes an error
 	if idx == 0 {
-		return nil
+		return nil, 1
 	}
 
+	const rangeOfJoinGroupStart = 3
 	firstToken := r.TokenSource[0]
+	previousToken := r.TokenSource[idx-1]
 	token := r.TokenSource[idx]
 	nextToken := r.TokenSource[idx+1] // should always work: trailed by EOF token
 
-	if r.containIrregularGroupMaker(firstToken, token, nextToken) {
+	afterComma := idx > 0 && r.TokenSource[idx-1].Type == lexer.COMMA
+	_, isJoin := lexer.JoinMakers()[token.Type]
+	_, isGroup := lexer.GroupMakers()[token.Type]
+
+	switch {
+	case r.containIrregularGroupMaker(firstToken, token, nextToken):
 		fmt.Printf("DEBUG: irregular group maker in clause starting with %q|... at %q|%q\n",
 			firstToken.Value, token.Value, nextToken.Value)
 
-		return nil
-	}
+		return nil, 1
 
-	afterComma := idx > 0 && r.TokenSource[idx-1].Type == lexer.COMMA
+	case token.Type == lexer.STARTPARENTHESIS && previousToken.Type == lexer.FUNCTION:
+		return nil, 1
 
-	if token.Type == lexer.STARTPARENTHESIS && nextToken.Type == lexer.SELECT {
+	case token.Type == lexer.FUNCTION && nextToken.Type == lexer.STARTPARENTHESIS:
+		fmt.Printf("DEBUG: function group maker in clause starting with %q|... at %q|%q\n",
+			firstToken.Value, token.Value, nextToken.Value)
+
+		return NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma)), 2
+
+	case token.Type == lexer.STARTPARENTHESIS && nextToken.Type == lexer.SELECT:
 		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
 		if subR == nil {
-			return nil
+			return nil, 1
 		}
 
 		subR.indentLevel = r.indentLevel
@@ -136,38 +151,26 @@ func (r *Retriever) getSubGroupRetriever(idx int) *Retriever {
 		// if subquery is found, indentLevel of all tokens until ")" will be incremented
 		subR.indentLevel++
 
-		return subR
-	}
+		return subR, 1
 
-	if _, isJoin := lexer.JoinMakers()[token.Type]; isJoin {
+	case isJoin && idx < rangeOfJoinGroupStart:
+		return nil, 1
+
+	case isJoin, isGroup:
 		// if group keywords appears in start of join group such as LEFT INNER JOIN, those keywords will be ignored
 		// In this case, "INNER" and "JOIN" are group keyword, but should not make subGroup
-		const rangeOfJoinGroupStart = 3
-		if idx < rangeOfJoinGroupStart {
-			return nil
-		}
 		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
 		if subR == nil {
-			return nil
+			return nil, 1
 		}
 
 		subR.indentLevel = r.indentLevel
 
-		return subR
+		return subR, 1
+
+	default:
+		return nil, 1
 	}
-
-	if _, ok := lexer.GroupMakers()[token.Type]; ok {
-		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options), withAfterComma(afterComma))
-		if subR == nil {
-			return nil
-		}
-
-		subR.indentLevel = r.indentLevel
-
-		return subR
-	}
-
-	return nil
 }
 
 // TODO: this should be cleaned up - there is nothing irregular in these constructs
@@ -191,7 +194,7 @@ func (r *Retriever) containIrregularGroupMaker(firstToken, token, nextToken lexe
 		return true
 	}
 
-	if firstToken.Type == lexer.FUNCTION && (ttype == lexer.STARTPARENTHESIS || ttype == lexer.FROM) {
+	if firstToken.Type == lexer.FUNCTION && ttype == lexer.FROM {
 		return true
 	}
 
