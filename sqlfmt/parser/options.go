@@ -10,6 +10,7 @@ type (
 		groupOptions     []group.Option
 		afterComma       bool // TODO: generalize to any contextual information to pass to ReIndenters
 		afterParenthesis bool
+		afterCast        bool
 	}
 )
 
@@ -18,6 +19,7 @@ func (o *options) ToGroupOptions() []group.Option {
 	res = append(res, o.groupOptions...)
 	res = append(res, group.WithHasCommaBefore(o.afterComma))
 	res = append(res, group.WithHasParenthesisBefore(o.afterParenthesis))
+	res = append(res, group.WithHasCastBefore(o.afterCast))
 
 	return res
 }
@@ -71,5 +73,13 @@ func withAfterComma(afterComma bool) Option {
 func withAfterParenthesis(afterParenthesis bool) Option {
 	return func(opts *options) {
 		opts.afterParenthesis = afterParenthesis
+	}
+}
+
+// withAfterCast produces some formatting context about the position of
+// a group followed by a cast operator '::' or not.
+func withAfterCast(afterCast bool) Option {
+	return func(opts *options) {
+		opts.afterCast = afterCast
 	}
 }

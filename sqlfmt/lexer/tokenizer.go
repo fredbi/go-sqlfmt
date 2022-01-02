@@ -61,6 +61,9 @@ func (t *Tokenizer) GetTokens() ([]Token, error) {
 			// LEFT depends on context: may be keyword or function
 			tok = Token{Type: FUNCTION, Value: tok.Value, options: t.options}
 
+		case tok.Type == OPERATOR && tok.Value == "::":
+			tok = Token{Type: CASTOPERATOR, Value: tok.Value, options: t.options}
+
 		// composed types
 		case i < len(tokens)-1 && isComposedType(tok, tokens[i+1]):
 			// build single type from double token

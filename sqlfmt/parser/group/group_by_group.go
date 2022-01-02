@@ -29,11 +29,11 @@ func (g *GroupBy) Reindent(buf *bytes.Buffer) error {
 
 	for _, el := range separate(elements) {
 		switch v := el.(type) {
-		case lexer.Token, string:
+		case lexer.Token:
 			if erw := g.writeWithComma(buf, v, g.IndentLevel); erw != nil {
 				return erw
 			}
-		case Reindenter:
+		default:
 			if eri := v.Reindent(buf); eri != nil {
 				return eri
 			}

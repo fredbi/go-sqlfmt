@@ -10,14 +10,12 @@ import (
 
 // Retriever retrieves target SQL clause group from TokenSource.
 type Retriever struct {
-	TokenSource []lexer.Token
+	tokensContext
 
 	result        []group.Reindenter
 	indentLevel   int
 	endTokenTypes map[lexer.TokenType]struct{}
 	endIdx        int
-
-	*options
 }
 
 // NewRetriever Creates Retriever that retrieves each target SQL clause.
@@ -30,17 +28,15 @@ func NewRetriever(tokens []lexer.Token, opts ...Option) *Retriever {
 		panic("invalid source for NewRetriever: must have some tokens")
 	}
 
-	o := defaultOptions(opts...)
 	endTokenTypes := tokens[0].EndTokenTypes()
 	if endTokenTypes == nil {
 		return nil
 	}
 
 	return &Retriever{
-		TokenSource:   tokens,
+		tokensContext: makeTokensContext(tokens, opts...),
 		endTokenTypes: endTokenTypes,
 		result:        make([]group.Reindenter, 0, len(tokens)),
-		options:       o,
 	}
 }
 
@@ -107,6 +103,14 @@ func (r *Retriever) appendGroupsToResult() error {
 	}
 }
 
+func (r *Retriever) subRetrieverAt(idx int) *Retriever {
+	return NewRetriever(r.TokenSource[idx:], withOptions(r.options),
+		withAfterComma(r.isAfterComma(idx)),
+		withAfterParenthesis(r.isAfterParenthesis(idx)),
+		withAfterCast(r.isAfterCast(idx)),
+	)
+}
+
 // getSubGroupRetriever creates Retriever to retrieve sub group in the target group starting from tokens sliced from idx.
 func (r *Retriever) getSubGroupRetriever(idx int) (*Retriever, int) {
 	// when idx is equal to 0, target group itself will be Subgroup, which causes an error
@@ -120,8 +124,6 @@ func (r *Retriever) getSubGroupRetriever(idx int) (*Retriever, int) {
 	token := r.TokenSource[idx]
 	nextToken := r.TokenSource[idx+1] // should always work: trailed by EOF token
 
-	afterComma := idx > 0 && r.TokenSource[idx-1].Type == lexer.COMMA
-	afterParenthesis := idx > 0 && r.TokenSource[idx-1].Type == lexer.STARTPARENTHESIS
 	_, isJoin := lexer.JoinMakers()[token.Type]
 	_, isGroup := lexer.GroupMakers()[token.Type]
 
@@ -132,32 +134,20 @@ func (r *Retriever) getSubGroupRetriever(idx int) (*Retriever, int) {
 
 		return nil, 1
 
-		/*
-			case nextToken.Type == lexer.OPERATOR && nextToken.Value == "::":
-				// TODO: cast_operator_group
-		*/
-
 	case token.Type == lexer.STARTPARENTHESIS && previousToken.Type == lexer.FUNCTION:
 		return nil, 1
 
 	case token.Type == lexer.FUNCTION && nextToken.Type == lexer.STARTPARENTHESIS:
-		fmt.Printf("DEBUG: function group maker in clause starting with %q|... at %q|%q, afterParenthesis: %t\n",
+		fmt.Printf("DEBUG: function group maker in clause starting with %q|... at %q|%q\n",
 			firstToken.Value,
 			token.Value,
 			nextToken.Value,
-			afterParenthesis,
 		)
 
-		return NewRetriever(r.TokenSource[idx:], withOptions(r.options),
-			withAfterComma(afterComma),
-			withAfterParenthesis(afterParenthesis),
-		), 2
+		return r.subRetrieverAt(idx), 2
 
 	case token.Type == lexer.STARTPARENTHESIS && nextToken.Type == lexer.SELECT:
-		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options),
-			withAfterComma(afterComma),
-			withAfterParenthesis(afterParenthesis),
-		)
+		subR := r.subRetrieverAt(idx)
 		if subR == nil {
 			return nil, 1
 		}
@@ -175,10 +165,7 @@ func (r *Retriever) getSubGroupRetriever(idx int) (*Retriever, int) {
 	case isJoin, isGroup:
 		// if group keywords appears in start of join group such as LEFT INNER JOIN, those keywords will be ignored
 		// In this case, "INNER" and "JOIN" are group keyword, but should not make subGroup
-		subR := NewRetriever(r.TokenSource[idx:], withOptions(r.options),
-			withAfterComma(afterComma),
-			withAfterParenthesis(afterParenthesis),
-		)
+		subR := r.subRetrieverAt(idx)
 		if subR == nil {
 			return nil, 1
 		}
@@ -203,17 +190,17 @@ func (r *Retriever) containIrregularGroupMaker(firstToken, token, nextToken lexe
 		return true
 	}
 
-	// in order to ignore "(" in TypeCast group
-	if firstToken.Type == lexer.TYPE && ttype == lexer.STARTPARENTHESIS {
-		return true
-	}
-
 	// in order to ignore ORDER BY in window function
 	if firstToken.Type == lexer.STARTPARENTHESIS && ttype == lexer.ORDER {
 		return true
 	}
 
 	if firstToken.Type == lexer.FUNCTION && ttype == lexer.FROM {
+		return true
+	}
+
+	// in order to ignore "(" in TypeCast group
+	if firstToken.Type == lexer.TYPE && ttype == lexer.STARTPARENTHESIS {
 		return true
 	}
 

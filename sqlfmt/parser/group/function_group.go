@@ -75,11 +75,13 @@ func (f *Function) writeFunction(buf *bytes.Buffer, token, prev lexer.Token, ind
 			WhiteSpace,
 			token.FormattedValue()),
 		)
-	case token.Type == lexer.COMMA:
-		buf.WriteString(token.FormattedValue())
-	case strings.HasPrefix(token.FormattedValue(), "::"):
+	case token.Type == lexer.COMMA, token.Type == lexer.CASTOPERATOR, token.Type == lexer.WS:
 		buf.WriteString(token.FormattedValue())
 	default:
-		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue(),
+		))
 	}
 }

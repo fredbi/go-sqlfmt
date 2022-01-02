@@ -8,10 +8,6 @@ import (
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
 )
 
-const (
-	DoubleColumn = "::"
-)
-
 // Case Clause.
 type Case struct {
 	elementReindenter
@@ -84,15 +80,14 @@ func (c *Case) writeCaseWithCommaBefore(buf *bytes.Buffer, token lexer.Token, in
 			WhiteSpace,
 			token.FormattedValue(),
 		))
-	case lexer.COMMA:
+	case lexer.COMMA, lexer.CASTOPERATOR:
 		buf.WriteString(token.FormattedValue())
 	default:
-		// TODO: cast operator "::" should be processed more cleanly
-		if strings.HasPrefix(token.FormattedValue(), DoubleColumn) {
-			buf.WriteString(token.FormattedValue())
-		} else {
-			buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
-		}
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue(),
+		))
 	}
 }
 
@@ -116,13 +111,13 @@ func (c *Case) writeCaseWithoutCommaBefore(buf *bytes.Buffer, token lexer.Token,
 			DoubleWhiteSpace,
 			token.FormattedValue(),
 		))
-	case lexer.COMMA:
+	case lexer.COMMA, lexer.CASTOPERATOR, lexer.WS:
 		buf.WriteString(token.FormattedValue())
 	default:
-		if strings.HasPrefix(token.FormattedValue(), DoubleColumn) {
-			buf.WriteString(token.FormattedValue())
-		} else {
-			buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
-		}
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue(),
+		))
 	}
 }

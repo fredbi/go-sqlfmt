@@ -10,6 +10,7 @@ type (
 		commaStyle           CommaStyle
 		hasCommaBefore       bool
 		hasParenthesisBefore bool
+		hasCastBefore        bool
 	}
 )
 
@@ -53,5 +54,12 @@ func WithHasCommaBefore(enabled bool) Option {
 func WithHasParenthesisBefore(enabled bool) Option {
 	return func(opts *options) {
 		opts.hasParenthesisBefore = enabled
+	}
+}
+
+// WithHasCastBefore instructs the group about the oerator-specific indentation context.
+func WithHasCastBefore(enabled bool) Option {
+	return func(opts *options) {
+		opts.hasCastBefore = enabled
 	}
 }

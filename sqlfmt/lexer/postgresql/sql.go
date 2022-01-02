@@ -43,6 +43,7 @@ func (Registry) Operators() []string {
 		"<>",
 		"<@",
 		"=",
+		"=>",
 		">",
 		">=",
 		">>",

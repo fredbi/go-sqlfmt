@@ -28,11 +28,11 @@ func (s *Set) Reindent(buf *bytes.Buffer) error {
 
 	for _, el := range separate(elements) {
 		switch v := el.(type) {
-		case lexer.Token, string:
+		case lexer.Token:
 			if erw := s.writeWithComma(buf, v, s.IndentLevel); erw != nil {
 				return erw
 			}
-		case Reindenter:
+		default:
 			if eri := v.Reindent(buf); eri != nil {
 				return eri
 			}

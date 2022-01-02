@@ -32,6 +32,8 @@ func (t *TypeCast) writeTypeCast(buf *bytes.Buffer, token lexer.Token, _ int) er
 	switch token.Type {
 	case lexer.TYPE:
 		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
+	case lexer.CASTOPERATOR:
+		buf.WriteString(token.FormattedValue())
 	case lexer.COMMA:
 		buf.WriteString(fmt.Sprintf(
 			"%s%s",

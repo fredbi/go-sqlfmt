@@ -8,17 +8,15 @@ import (
 )
 
 type Parser struct {
+	tokensContext
+
 	offset int
-	tokens []lexer.Token
-	*options
 }
 
 // New SQL parser.
 func New(opts ...Option) *Parser {
-	o := defaultOptions(opts...)
-
 	return &Parser{
-		options: o,
+		tokensContext: makeTokensContext(nil, opts...),
 	}
 }
 
@@ -29,22 +27,23 @@ func (p *Parser) Parse(tokens []lexer.Token) ([]group.Reindenter, error) {
 	if err := isStartSupportedClause(tokens[0]); err != nil {
 		return nil, err
 	}
-	p.tokens = tokens
+	p.TokenSource = tokens
 
 	return p.parseTokens()
 }
 
 func (p *Parser) parseTokens() ([]group.Reindenter, error) {
-	if len(p.tokens) == 0 || p.offset >= len(p.tokens) || p.tokens[p.offset].Type == lexer.EOF {
+	if len(p.TokenSource) == 0 || p.offset >= len(p.TokenSource) || p.TokenSource[p.offset].Type == lexer.EOF {
 		return nil, nil
 	}
 
-	result := make([]group.Reindenter, 0, len(p.tokens[p.offset:]))
+	result := make([]group.Reindenter, 0, len(p.TokenSource[p.offset:]))
 
-	r := NewRetriever(p.tokens[p.offset:],
+	r := NewRetriever(p.TokenSource[p.offset:],
 		withOptions(p.options.CloneWithOptions(
-			withAfterComma(p.isAfterComma()),
-			withAfterParenthesis(p.isAfterParenthesis()),
+			withAfterComma(p.isAfterComma(p.offset)),
+			withAfterParenthesis(p.isAfterParenthesis(p.offset)),
+			withAfterCast(p.isAfterCast(p.offset)),
 		)),
 	)
 	if r == nil {
@@ -76,16 +75,6 @@ func (p *Parser) parseTokens() ([]group.Reindenter, error) {
 	result = append(result, next...)
 
 	return result, nil
-}
-
-// isAfterComma provides context about the current group relative to a comma.
-func (p *Parser) isAfterComma() bool {
-	return p.offset > 0 && p.tokens[p.offset-1].Type == lexer.COMMA
-}
-
-// isAfterParenthesis provides context about the current group relative to an opening parenthesis.
-func (p *Parser) isAfterParenthesis() bool {
-	return p.offset > 0 && p.tokens[p.offset-1].Type == lexer.STARTPARENTHESIS
 }
 
 // isStartSupportedClause picks valid SQL statement starters.
