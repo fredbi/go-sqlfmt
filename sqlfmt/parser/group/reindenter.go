@@ -9,8 +9,12 @@ import (
 )
 
 const (
-	NewLine          = "\n"
-	WhiteSpace       = " "
+
+	// NewLine feed.
+	NewLine = "\n"
+	// WhiteSpace is a single blank space.
+	WhiteSpace = " "
+	// DoubleWhiteSpace is a double blank space.
 	DoubleWhiteSpace = "  "
 )
 
@@ -60,6 +64,8 @@ type (
 		Element []Reindenter
 		baseReindenter
 	}
+
+	tokenWriter func(*bytes.Buffer, lexer.Token, Reindenter, int) error
 )
 
 func (g baseReindenter) GetStart() int {
@@ -93,7 +99,7 @@ func (g *baseReindenter) writeComma(buf *bytes.Buffer, token lexer.Token, indent
 	}
 }
 
-func (g *baseReindenter) write(buf *bytes.Buffer, token lexer.Token, indent int) error {
+func (g *baseReindenter) write(buf *bytes.Buffer, token lexer.Token, previous Reindenter, indent int) error {
 	switch {
 	case token.IsNeedNewLineBefore():
 		buf.WriteString(
@@ -120,7 +126,7 @@ func (g *baseReindenter) write(buf *bytes.Buffer, token lexer.Token, indent int)
 		))
 	case token.Type == lexer.CASTOPERATOR, token.Type == lexer.WS:
 		buf.WriteString(token.FormattedValue())
-	case token.Type == lexer.TYPE && g.hasCastBefore:
+	case token.Type == lexer.TYPE && (g.hasCastBefore || isCastOperator(previous)):
 		buf.WriteString(token.FormattedValue())
 	default:
 		buf.WriteString(fmt.Sprintf(
@@ -133,7 +139,7 @@ func (g *baseReindenter) write(buf *bytes.Buffer, token lexer.Token, indent int)
 	return nil
 }
 
-func (g *baseReindenter) writeWithComma(buf *bytes.Buffer, token lexer.Token, indent int) error {
+func (g *baseReindenter) writeWithComma(buf *bytes.Buffer, token lexer.Token, previous Reindenter, indent int) error {
 	columnCount := g.start
 	defer func() {
 		g.start = columnCount
@@ -157,10 +163,10 @@ func (g *baseReindenter) writeWithComma(buf *bytes.Buffer, token lexer.Token, in
 		g.writeComma(buf, token, indent)
 	case token.Type == lexer.CASTOPERATOR, token.Type == lexer.WS:
 		buf.WriteString(token.FormattedValue())
-	case token.Type == lexer.TYPE && g.hasCastBefore:
+	case token.Type == lexer.TYPE && (g.hasCastBefore || isCastOperator(previous)):
 		buf.WriteString(token.FormattedValue())
 	default:
-		return fmt.Errorf("can not reindent %q", token.FormattedValue())
+		_ = g.write(buf, token, previous, indent)
 	}
 
 	return nil
@@ -199,12 +205,16 @@ func (e *elementReindenter) processPunctuation() ([]Reindenter, error) {
 func (e *elementReindenter) elementsTokenApply(
 	elements []Reindenter,
 	buf *bytes.Buffer,
-	tokenWriter func(*bytes.Buffer, lexer.Token, int) error,
+	writer tokenWriter,
 ) error {
-	for _, el := range elements {
+	for i, el := range elements {
+		var previous Reindenter
+		if i > 0 {
+			previous = elements[i-1]
+		}
 		switch token := el.(type) {
 		case lexer.Token:
-			if err := tokenWriter(buf, token, e.IndentLevel); err != nil {
+			if err := writer(buf, token, previous, e.IndentLevel); err != nil {
 				return err
 			}
 		default:
@@ -215,4 +225,14 @@ func (e *elementReindenter) elementsTokenApply(
 	}
 
 	return nil
+}
+
+func isCastOperator(r Reindenter) bool {
+	if r == nil {
+		return false
+	}
+
+	previousToken, ok := r.(lexer.Token)
+
+	return ok && previousToken.Type == lexer.CASTOPERATOR
 }

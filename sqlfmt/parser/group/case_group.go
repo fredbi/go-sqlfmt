@@ -29,17 +29,17 @@ func (c *Case) Reindent(buf *bytes.Buffer) error {
 	return c.elementsTokenApply(elements, buf, c.writeCase)
 }
 
-func (c *Case) writeCase(buf *bytes.Buffer, token lexer.Token, indent int) error {
+func (c *Case) writeCase(buf *bytes.Buffer, token lexer.Token, previous Reindenter, indent int) error {
 	if c.hasCommaBefore {
-		c.writeCaseWithCommaBefore(buf, token, indent)
+		c.writeCaseWithCommaBefore(buf, token, previous, indent)
 	} else {
-		c.writeCaseWithoutCommaBefore(buf, token, indent)
+		c.writeCaseWithoutCommaBefore(buf, token, previous, indent)
 	}
 
 	return nil
 }
 
-func (c *Case) writeCaseWithCommaBefore(buf *bytes.Buffer, token lexer.Token, indent int) {
+func (c *Case) writeCaseWithCommaBefore(buf *bytes.Buffer, token lexer.Token, _ Reindenter, indent int) {
 	switch token.Type {
 	case lexer.CASE:
 		buf.WriteString(fmt.Sprintf(
@@ -91,7 +91,7 @@ func (c *Case) writeCaseWithCommaBefore(buf *bytes.Buffer, token lexer.Token, in
 	}
 }
 
-func (c *Case) writeCaseWithoutCommaBefore(buf *bytes.Buffer, token lexer.Token, indent int) {
+func (c *Case) writeCaseWithoutCommaBefore(buf *bytes.Buffer, token lexer.Token, _ Reindenter, indent int) {
 	switch token.Type {
 	case lexer.CASE, lexer.END:
 		buf.WriteString(fmt.Sprintf(

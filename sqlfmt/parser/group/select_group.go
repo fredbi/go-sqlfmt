@@ -13,6 +13,7 @@ type Select struct {
 	elementReindenter
 }
 
+// NewSelect group
 func NewSelect(element []Reindenter, opts ...Option) *Select {
 	return &Select{
 		elementReindenter: newElementReindenter(element, opts...),
@@ -28,12 +29,16 @@ func (s *Select) Reindent(buf *bytes.Buffer) error {
 		return err
 	}
 
-	for i, element := range separate(elements) {
+	indenters := separate(elements)
+	for i, element := range indenters {
+		var previous Reindenter
+		if i > 0 {
+			previous = indenters[i-1]
+		}
+
 		switch v := element.(type) {
 		case lexer.Token:
-			if erw := s.writeSelect(buf, v, &s.start, s.IndentLevel); erw != nil {
-				return fmt.Errorf("writeSelect failed: %w", erw)
-			}
+			s.writeSelect(buf, v, previous, &s.start, s.IndentLevel)
 		case *Case:
 			if tok, ok := elements[i-1].(lexer.Token); ok && tok.Type == lexer.COMMA {
 				v.hasCommaBefore = true
@@ -87,7 +92,7 @@ func (s *Select) Reindent(buf *bytes.Buffer) error {
 	return nil
 }
 
-func (s *Select) writeSelect(buf *bytes.Buffer, token lexer.Token, start *int, indent int) error {
+func (s *Select) writeSelect(buf *bytes.Buffer, token lexer.Token, previous Reindenter, start *int, indent int) {
 	columnCount := *start
 	defer func() {
 		*start = columnCount
@@ -102,25 +107,31 @@ func (s *Select) writeSelect(buf *bytes.Buffer, token lexer.Token, start *int, i
 			token.FormattedValue(),
 		))
 	case lexer.AS, lexer.DISTINCT, lexer.DISTINCTROW, lexer.GROUP, lexer.ON:
-		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue(),
+		))
 	case lexer.EXISTS:
-		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue(),
+		))
 		columnCount++
 	case lexer.CASTOPERATOR, lexer.WS:
 		buf.WriteString(token.FormattedValue())
 	case lexer.COMMA:
 		s.writeComma(buf, token, indent)
 	case lexer.TYPE:
-		if s.hasCastBefore {
+		if s.hasCastBefore || isCastOperator(previous) {
 			buf.WriteString(token.FormattedValue())
 
 			break
 		}
 
-		s.write(buf, token, indent)
+		_ = s.write(buf, token, previous, indent)
 	default:
-		s.write(buf, token, indent)
+		_ = s.write(buf, token, previous, indent)
 	}
-
-	return nil
 }

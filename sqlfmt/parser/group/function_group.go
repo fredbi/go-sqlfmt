@@ -15,6 +15,7 @@ type Function struct {
 	ColumnCount  int
 }
 
+// NewFunction call group.
 func NewFunction(element []Reindenter, opts ...Option) *Function {
 	return &Function{
 		elementReindenter: newElementReindenter(element, opts...),
@@ -76,6 +77,8 @@ func (f *Function) writeFunction(buf *bytes.Buffer, token, prev lexer.Token, ind
 			token.FormattedValue()),
 		)
 	case token.Type == lexer.COMMA, token.Type == lexer.CASTOPERATOR, token.Type == lexer.WS:
+		buf.WriteString(token.FormattedValue())
+	case token.Type == lexer.TYPE && (f.hasCastBefore || isCastOperator(prev)):
 		buf.WriteString(token.FormattedValue())
 	default:
 		buf.WriteString(fmt.Sprintf(

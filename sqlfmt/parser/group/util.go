@@ -61,41 +61,50 @@ func separate(rs []Reindenter) []Reindenter {
 	return result
 }
 
-// process bracket, singlequote and brace
+// process bracket, singlequote and brace.
+//
 // TODO: more elegant.
+//
+// TODO(fred): neutered out - for the moment, can't easily demonstrate what this is useful for.
 func processPunctuation(rs []Reindenter) ([]Reindenter, error) {
-	var (
-		result    []Reindenter
-		skipRange int
-	)
+	/*
+		var (
+			result    []Reindenter
+			skipRange int
+		)
 
-	for i, v := range rs {
-		token, ok := v.(lexer.Token)
-		if !ok {
-			result = append(result, v)
+		for i, v := range rs {
+			token, ok := v.(lexer.Token)
+			if !ok {
+				result = append(result, v)
 
-			continue
-		}
-
-		switch {
-		case skipRange > 0:
-			skipRange--
-		case token.Type == lexer.STARTBRACE || token.Type == lexer.STARTBRACKET:
-			surrounding, sr, err := extractSurroundingArea(rs[i:])
-			if err != nil {
-				return nil, err
+				continue
 			}
-			result = append(result, lexer.Token{
-				Type:  lexer.SURROUNDING,
-				Value: surrounding,
-			})
-			skipRange += sr
-		default:
-			result = append(result, token)
-		}
-	}
 
-	return result, nil
+			// simple token
+
+			fmt.Printf("DEBUG: processPunctuation: token [%d]:%q\n", i, token.Value)
+			switch {
+			case skipRange > 0:
+				skipRange--
+			case token.Type == lexer.STARTBRACE || token.Type == lexer.STARTBRACKET:
+					surrounding, sr, err := extractSurroundingArea(rs[i:])
+					if err != nil {
+						return nil, err
+					}
+						result = append(result, lexer.Token{
+							Type:  lexer.SURROUNDING,
+							Value: surrounding,
+						})
+					skipRange += sr
+			default:
+				result = append(result, token)
+			}
+		}
+
+		return result, nil
+	*/
+	return rs, nil
 }
 
 // returns surrounding area including punctuation such as {xxx, xxx}.

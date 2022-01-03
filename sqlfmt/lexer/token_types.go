@@ -116,7 +116,6 @@ const (
 	IDENT     // field or table name
 	QUOTEAREA // unused
 	STRING    // values surrounded with single quotes
-	SURROUNDING
 	FUNCTION
 	ANDGROUP
 	ORGROUP

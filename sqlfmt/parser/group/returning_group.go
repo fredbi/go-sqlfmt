@@ -11,6 +11,7 @@ type Returning struct {
 	elementReindenter
 }
 
+// NewReturning group
 func NewReturning(element []Reindenter, opts ...Option) *Returning {
 	return &Returning{
 		elementReindenter: newElementReindenter(element, opts...),
@@ -24,10 +25,15 @@ func (r *Returning) Reindent(buf *bytes.Buffer) error {
 		return err
 	}
 
-	for _, el := range separate(elements) {
+	reindenters := separate(elements)
+	for i, el := range reindenters {
+		var previous Reindenter
+		if i > 0 {
+			previous = reindenters[i-1]
+		}
 		switch v := el.(type) {
 		case lexer.Token:
-			if erw := r.writeWithComma(buf, v, r.IndentLevel); erw != nil {
+			if erw := r.writeWithComma(buf, v, previous, r.IndentLevel); erw != nil {
 				return erw
 			}
 		default:
