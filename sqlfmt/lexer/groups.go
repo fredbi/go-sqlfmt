@@ -6,8 +6,7 @@ func (t Token) EndTokenTypes() map[TokenType]struct{} {
 	case SELECT:
 		return map[TokenType]struct{}{
 			FROM:  {},
-			UNION: {},
-			// TODO: need INTERSECT???
+			UNION: {}, INTERSECT: {}, EXCEPT: {},
 		}
 	case FROM:
 		return map[TokenType]struct{}{
@@ -41,7 +40,7 @@ func (t Token) EndTokenTypes() map[TokenType]struct{} {
 			RETURNING:      {},
 			ENDPARENTHESIS: {},
 		}
-	case ANDGROUP:
+	case ANDGROUP: // is this useful?
 		return map[TokenType]struct{}{
 			GROUP: {}, ORDER: {},
 			LIMIT: {}, OFFSET: {}, FETCH: {},
@@ -49,7 +48,7 @@ func (t Token) EndTokenTypes() map[TokenType]struct{} {
 			ANDGROUP: {}, ORGROUP: {},
 			ENDPARENTHESIS: {},
 		}
-	case ORGROUP:
+	case ORGROUP: // is this useful?
 		return map[TokenType]struct{}{
 			GROUP: {}, ORDER: {},
 			LIMIT: {}, OFFSET: {}, FETCH: {},

@@ -118,6 +118,8 @@ func registerDefaults() {
 //
 // This list does not contain data types, functions, operators, reserved values and
 // literal constructors.
+//
+// Reference: https://github.com/postgres/postgres/blob/master/src/include/parser/kwlist.h
 func registerKeywords() {
 	sqlKeywordMap = iradix.New()
 
@@ -143,6 +145,7 @@ func registerKeywords() {
 		"DO":            DO,
 		"DOCUMENT":      DOCUMENT,
 		"DOUBLE":        DOUBLE,
+		"CUBE":          CUBE,
 		"ELSE":          ELSE,
 		"END":           END,
 		"ESCAPE":        ESCAPE,
@@ -186,6 +189,7 @@ func registerKeywords() {
 		"REF":           REF,
 		"RETURNING":     RETURNING,
 		"RIGHT":         RIGHT,
+		"ROLLUP":        ROLLUP,
 		"ROW":           ROW, // TODO can be function
 		"ROWS":          ROWS,
 		"SELECT":        SELECT,

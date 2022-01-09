@@ -7,6 +7,7 @@ type (
 	Option func(*options)
 
 	options struct {
+		indentLevel      int
 		groupOptions     []group.Option
 		afterComma       bool // TODO: generalize to any contextual information to pass to ReIndenters
 		afterParenthesis bool
@@ -81,5 +82,11 @@ func withAfterParenthesis(afterParenthesis bool) Option {
 func withAfterCast(afterCast bool) Option {
 	return func(opts *options) {
 		opts.afterCast = afterCast
+	}
+}
+
+func withIndentLevel(level int) Option {
+	return func(opts *options) {
+		opts.indentLevel = level
 	}
 }

@@ -3,6 +3,7 @@ package group
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
@@ -20,20 +21,52 @@ func NewSelect(element []Reindenter, opts ...Option) *Select {
 	}
 }
 
-// Reindent reindens its elements.
-func (s *Select) Reindent(buf *bytes.Buffer) error {
-	s.start = 0
+func (s *Select) writeIndent(w io.Writer, element Reindenter) {
+	switch v := element.(type) {
+	case lexer.Token:
+		fmt.Fprintf(
+			w,
+			"%s%s",
+			strings.Repeat(WhiteSpace, s.indentSize*s.indentLevel),
+			token.FormattedValue(),
+		)
+	default:
+		element.Reindent(w)
+	}
+}
 
-	elements, err := s.processPunctuation()
-	if err != nil {
-		return err
+// Reindent reindents the elements in a SELECT statement.
+//
+// {SELECT ...} {FROM}
+// {SELECT ...} {UNION|UNION ALL|INTERSECT|EXCEPT}
+// {SELECT ...} {EOF}
+// (SELECT ...}) -> see Parenthesis group
+//
+// Individual fields are preceded by a line feed.
+// Individual fields are indented.
+func (s *Select) Reindent(buf *bytes.Buffer) error {
+	if len(s.Element) == 0 {
+		return nil
 	}
 
-	indenters := separate(elements)
-	for i, element := range indenters {
-		var previous Reindenter
-		if i > 0 {
-			previous = indenters[i-1]
+	s.writeIndent(buf, s.Element[0])
+	linefeed(buf)
+
+	if len(s.Element) == 1 {
+		return nil
+	}
+
+	s.start = 0
+
+	s.writeIndent(buf, s.Element[1])
+	if len(s.Element) == 2 {
+		return nil
+	}
+
+	for i, element := range s.Element[2:] {
+		previous := s.Element[i+1]
+
+		if !isComma(previous) {
 		}
 
 		switch v := element.(type) {

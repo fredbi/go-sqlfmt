@@ -13,6 +13,7 @@ type Case struct {
 	elementReindenter
 }
 
+// NewCase clause.
 func NewCase(element []Reindenter, opts ...Option) *Case {
 	return &Case{
 		elementReindenter: newElementReindenter(element, opts...),
@@ -21,6 +22,7 @@ func NewCase(element []Reindenter, opts ...Option) *Case {
 
 // Reindent reindents its elements.
 func (c *Case) Reindent(buf *bytes.Buffer) error {
+	fmt.Printf("DEBUG: case Reindent: indent=%d\n", c.IndentLevel)
 	elements, err := c.processPunctuation()
 	if err != nil {
 		return err

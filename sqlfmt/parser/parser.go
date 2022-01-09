@@ -7,6 +7,9 @@ import (
 	"github.com/fredbi/go-sqlfmt/sqlfmt/parser/group"
 )
 
+// Parser knows how to parse SQL lexemes retrieved from the lexer package.
+//
+// The parsing action is limited to regroup statements and expression in groups to be reindented.
 type Parser struct {
 	tokensContext
 
@@ -20,7 +23,7 @@ func New(opts ...Option) *Parser {
 	}
 }
 
-// ParseTokens parses Tokens, creating slice of Reindenter's.
+// Parse parses Tokens, creating a slice of Reindenter's.
 //
 // Each Reindenter is a group of SQL clauses such as SelectGroup, FromGroup ...etc.
 func (p *Parser) Parse(tokens []lexer.Token) ([]group.Reindenter, error) {

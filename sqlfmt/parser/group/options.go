@@ -11,6 +11,7 @@ type (
 		hasCommaBefore       bool
 		hasParenthesisBefore bool
 		hasCastBefore        bool
+		indentSize           int
 	}
 )
 
@@ -22,6 +23,7 @@ const (
 func defaultOptions(opts ...Option) *options {
 	o := &options{
 		commaStyle: CommaStyleLeft,
+		indentSize: 2,
 	}
 
 	for _, apply := range opts {

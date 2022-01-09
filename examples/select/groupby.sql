@@ -1,0 +1,1 @@
+SELECT a,b FROM table GROUP BY 1,2

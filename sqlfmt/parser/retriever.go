@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
 	"github.com/fredbi/go-sqlfmt/sqlfmt/parser/group"
 )
@@ -13,7 +14,6 @@ type Retriever struct {
 	tokensContext
 
 	result        []group.Reindenter
-	indentLevel   int
 	endTokenTypes map[lexer.TokenType]struct{}
 	endIdx        int
 }
@@ -104,11 +104,16 @@ func (r *Retriever) appendGroupsToResult() error {
 }
 
 func (r *Retriever) subRetrieverAt(idx int) *Retriever {
-	return NewRetriever(r.TokenSource[idx:], withOptions(r.options),
+	rr := NewRetriever(r.TokenSource[idx:], withOptions(r.options),
 		withAfterComma(r.isAfterComma(idx)),
 		withAfterParenthesis(r.isAfterParenthesis(idx)),
 		withAfterCast(r.isAfterCast(idx)),
+		// withIndentLevel(r.indentLevel+1),
 	)
+	fmt.Printf("DEBUG: new retriever, %v, indentLevel: %d\n", rr.TokenSource[0].Value, rr.indentLevel)
+	fmt.Printf("DEBUG: details: %v\n", spew.Sdump(rr))
+
+	return rr
 }
 
 // getSubGroupRetriever creates Retriever to retrieve sub group in the target group starting from tokens sliced from idx.
@@ -156,6 +161,14 @@ func (r *Retriever) getSubGroupRetriever(idx int) (*Retriever, int) {
 
 		// if subquery is found, indentLevel of all tokens until ")" will be incremented
 		subR.indentLevel++
+
+		return subR, 1
+	case token.Type == lexer.CASE:
+		subR := r.subRetrieverAt(idx)
+		if subR == nil {
+			return nil, 1
+		}
+		subR.indentLevel = r.indentLevel + 1
 
 		return subR, 1
 

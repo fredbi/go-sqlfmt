@@ -3,6 +3,7 @@ package group
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
@@ -78,6 +79,14 @@ func (g *baseReindenter) IncrementIndentLevel(lev int) {
 }
 
 // writeComma writes a comma token with different indentation styles.
+//
+// Left-justified style (default): commas appear at the start of each new line
+//  ....\n
+//  DDDDD,
+//
+// Right-justified style: commas appear at the end of each new line
+//  ....,\n
+//  DDDD.
 func (g *baseReindenter) writeComma(buf *bytes.Buffer, token lexer.Token, indent int) {
 	switch g.commaStyle {
 	case CommaStyleRight:
@@ -161,10 +170,12 @@ func (g *baseReindenter) writeWithComma(buf *bytes.Buffer, token lexer.Token, pr
 		)
 	case token.Type == lexer.COMMA:
 		g.writeComma(buf, token, indent)
-	case token.Type == lexer.CASTOPERATOR, token.Type == lexer.WS:
-		buf.WriteString(token.FormattedValue())
-	case token.Type == lexer.TYPE && (g.hasCastBefore || isCastOperator(previous)):
-		buf.WriteString(token.FormattedValue())
+		/*
+			case token.Type == lexer.CASTOPERATOR, token.Type == lexer.WS:
+				buf.WriteString(token.FormattedValue())
+			case token.Type == lexer.TYPE && (g.hasCastBefore || isCastOperator(previous)):
+				buf.WriteString(token.FormattedValue())
+		*/
 	default:
 		_ = g.write(buf, token, previous, indent)
 	}
@@ -232,7 +243,21 @@ func isCastOperator(r Reindenter) bool {
 		return false
 	}
 
-	previousToken, ok := r.(lexer.Token)
+	token, ok := r.(lexer.Token)
 
-	return ok && previousToken.Type == lexer.CASTOPERATOR
+	return ok && token.Type == lexer.CASTOPERATOR
+}
+
+func isComma(r Reindenter) bool {
+	if r == nil {
+		return false
+	}
+
+	token, ok := r.(lexer.Token)
+
+	return ok && token.Type == lexer.COMMA
+}
+
+func linefeed(w io.Writer) {
+	_, _ = w.Write(Linefeed)
 }
