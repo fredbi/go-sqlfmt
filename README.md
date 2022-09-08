@@ -29,10 +29,12 @@ usage: sqlfmt [flags] [path ...]
     	justify commas to the left or the right [left|right] (default "left")
   -d	display diffs instead of rewriting files
   -distance int
-    	write the distance from the edge to the begin of SQL statements
+    	write the distance from the edge to the beginning of SQL statements
   -l	list files whose formatting differs from goreturns's
   -lower
     	SQL keywords are lower-cased
+  -postgis
+    	Postgis support
   -raw
     	parse raw SQL file
   -w	write result to (source) file instead of stdout
@@ -120,8 +122,9 @@ ORDER BY
 ## Installation
 
 ```bash
-run git clone and go build -o sqlfmt 
+go install github.com/fredbi/go-sqlfmt/cmd/go-sqlfmt@latest
 ```
+
 ## Usage
 
 - Provide flags and input files or directory  
@@ -172,7 +175,7 @@ run git clone and go build -o sqlfmt
       fmt.Println(`select * from xxx`)
   }
 
-  // nor are statements surrounded with double quotes
+  // and neither are statements surrounded with double quotes
   func sendSQL() int {
       var id int
       var db *sql.DB
@@ -195,18 +198,20 @@ run git clone and go build -o sqlfmt
   - Currently being formatted into this: `[[ xx], xx]`
   - Ideally, it should be formatted into this: `[[xx], xx]`
 
-- Nested functions such as `sum(average(xxx))`
-  - Currently being formatted into this: `SUM( AVERAGE(xxx))`
-  - Ideally, it should be formatted into this: `SUM(AVERAGE(xxx))`
-  
- 
-
 ## Future Work
 
-- [x] Refactor
+- [x] goroutine-safe
+- [x] refactor
+- [x] LEFT keyword vs function
+- [x] cast operator
+- [x] operators
+- [x] More comprehensive support for Postgres
+- [x] Support for postgis types, operators and functions
+- [x] CASE reformating bug
+- [x] Nested functions reformating bug
+- [ ] Identify operators and beautify expressions
 - [ ] Support SQL comments
-- [ ] More comprehensive support for Posgres
-- [ ] Indentify bind variables
+- [ ] Identify bind variables
 - [ ] Address unsupported / flaky indented structures mentioned above
 - [ ] Support DDL
 - [ ] Turn it into a plug-in or an extension for editors

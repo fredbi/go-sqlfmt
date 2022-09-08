@@ -55,7 +55,7 @@ func (s *Subquery) writeSubquery(buf *bytes.Buffer, token lexer.Token, indent in
 		buf.WriteString(fmt.Sprintf("%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent), token.FormattedValue()))
 	case token.Type == lexer.ENDPARENTHESIS:
 		buf.WriteString(fmt.Sprintf("%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent-1), token.FormattedValue()))
-	case strings.HasPrefix(token.FormattedValue(), "::"):
+	case token.Type == lexer.CASTOPERATOR:
 		buf.WriteString(token.FormattedValue())
 	default:
 		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))

@@ -1,22 +1,26 @@
 package group
 
 import (
-	"bytes"
 	"fmt"
-	"strings"
 
 	"github.com/pkg/errors"
 
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
 )
 
-// separate elements by comma and the reserved word in select clause.
-func separate(rs []Reindenter) []interface{} {
+// separate elements by comma and the reserved keywords in a select clause.
+func separate(rs []Reindenter) []Reindenter {
 	var (
-		result           []interface{}
 		skipRange, count int
+		result, buf      []Reindenter
 	)
-	buf := &bytes.Buffer{}
+
+	flushBuf := func() {
+		if len(buf) > 0 {
+			result = append(result, buf...)
+			buf = buf[:0]
+		}
+	}
 
 	for _, r := range rs {
 		switch token := r.(type) {
@@ -25,84 +29,82 @@ func separate(rs []Reindenter) []interface{} {
 			case skipRange > 0:
 				skipRange--
 
-			case token.IsKeyWordInSelect():
-				// TODO: more elegant
-				if buf.String() != "" {
-					result = append(result, buf.String())
-					buf.Reset()
-				}
+			case token.IsKeywordInSelect():
+				flushBuf()
 				result = append(result, token)
 
 			case token.Type == lexer.COMMA:
-				if buf.String() != "" {
-					result = append(result, buf.String())
-				}
+				flushBuf()
 				result = append(result, token)
-				buf.Reset()
 				count = 0
-
-			case strings.HasPrefix(token.FormattedValue(), "::"):
-				buf.WriteString(token.FormattedValue())
 
 			default:
 				if count == 0 {
-					buf.WriteString(token.FormattedValue())
+					buf = append(buf, token)
 				} else {
-					buf.WriteString(WhiteSpace + token.FormattedValue())
+					// NULLIFY THIS FOR THE MOMENT: CAN'T EASILY DEMONSTRATE WHERE THIS COMES IN PLAY
+					// buf = append(buf, lexer.MakeToken(lexer.WS, "#" /*WhiteSpace*/))
+					buf = append(buf, token)
 				}
 
 				count++
 			}
 
 		default:
-			if buf.String() != "" {
-				result = append(result, buf.String())
-				buf.Reset()
-			}
+			flushBuf()
 			result = append(result, r)
 		}
 	}
 
-	// append the last element in buf
-	if buf.String() != "" {
-		result = append(result, buf.String())
-	}
+	flushBuf()
 
 	return result
 }
 
-// process bracket, singlequote and brace
+// process bracket, singlequote and brace.
+//
 // TODO: more elegant.
+//
+// TODO(fred): neutered out - for the moment, can't easily demonstrate what this is useful for.
 func processPunctuation(rs []Reindenter) ([]Reindenter, error) {
-	var (
-		result    []Reindenter
-		skipRange int
-	)
+	/*
+		var (
+			result    []Reindenter
+			skipRange int
+		)
 
-	for i, v := range rs {
-		if token, ok := v.(lexer.Token); ok {
+		for i, v := range rs {
+			token, ok := v.(lexer.Token)
+			if !ok {
+				result = append(result, v)
+
+				continue
+			}
+
+			// simple token
+
+			fmt.Printf("DEBUG: processPunctuation: token [%d]:%q\n", i, token.Value)
 			switch {
 			case skipRange > 0:
 				skipRange--
 			case token.Type == lexer.STARTBRACE || token.Type == lexer.STARTBRACKET:
-				surrounding, sr, err := extractSurroundingArea(rs[i:])
-				if err != nil {
-					return nil, err
-				}
-				result = append(result, lexer.Token{
-					Type:  lexer.SURROUNDING,
-					Value: surrounding,
-				})
-				skipRange += sr
+					surrounding, sr, err := extractSurroundingArea(rs[i:])
+					if err != nil {
+						return nil, err
+					}
+						result = append(result, lexer.Token{
+							Type:  lexer.SURROUNDING,
+							Value: surrounding,
+						})
+					skipRange += sr
 			default:
 				result = append(result, token)
 			}
-		} else {
-			result = append(result, v)
 		}
-	}
 
-	return result, nil
+		return result, nil
+	*/
+	return rs, nil
 }
 
 // returns surrounding area including punctuation such as {xxx, xxx}.

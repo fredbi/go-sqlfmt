@@ -28,14 +28,18 @@ func (l *Lock) Reindent(buf *bytes.Buffer) error {
 	return l.elementsTokenApply(elements, buf, l.writeLock)
 }
 
-func (l *Lock) writeLock(buf *bytes.Buffer, token lexer.Token, _ int) error {
+func (l *Lock) writeLock(buf *bytes.Buffer, token lexer.Token, _ Reindenter, _ int) error {
 	switch token.Type {
-	case lexer.LOCK:
+	case lexer.LOCK, lexer.IN:
 		buf.WriteString(fmt.Sprintf("%s%s", NewLine, token.FormattedValue()))
-	case lexer.IN:
-		buf.WriteString(fmt.Sprintf("%s%s", NewLine, token.FormattedValue()))
+	case lexer.CASTOPERATOR:
+		buf.WriteString(token.FormattedValue())
 	default:
-		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue(),
+		))
 	}
 
 	return nil

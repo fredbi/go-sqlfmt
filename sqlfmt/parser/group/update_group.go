@@ -11,6 +11,7 @@ type Update struct {
 	elementReindenter
 }
 
+// NewUpdate clause group
 func NewUpdate(element []Reindenter, opts ...Option) *Update {
 	return &Update{
 		elementReindenter: newElementReindenter(element, opts...),
@@ -26,13 +27,18 @@ func (u *Update) Reindent(buf *bytes.Buffer) error {
 		return err
 	}
 
-	for _, el := range separate(elements) {
+	reindenters := separate(elements)
+	for i, el := range reindenters {
+		var previous Reindenter
+		if i > 0 {
+			previous = reindenters[i-1]
+		}
 		switch v := el.(type) {
-		case lexer.Token, string:
-			if erw := u.writeWithComma(buf, v, u.IndentLevel); erw != nil {
+		case lexer.Token:
+			if erw := u.writeWithComma(buf, v, previous, u.IndentLevel); erw != nil {
 				return erw
 			}
-		case Reindenter:
+		default:
 			if eri := v.Reindent(buf); eri != nil {
 				return eri
 			}

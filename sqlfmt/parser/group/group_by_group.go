@@ -6,12 +6,14 @@ import (
 	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer"
 )
 
-// GroupBy clause
+// GroupBy clause.
+//
 // nolint:revive
 type GroupBy struct {
 	elementReindenter
 }
 
+// NewGroupBy group;
 func NewGroupBy(element []Reindenter, opts ...Option) *GroupBy {
 	return &GroupBy{
 		elementReindenter: newElementReindenter(element, opts...),
@@ -27,13 +29,18 @@ func (g *GroupBy) Reindent(buf *bytes.Buffer) error {
 		return err
 	}
 
-	for _, el := range separate(elements) {
+	reindenters := separate(elements)
+	for i, el := range reindenters {
+		var previous Reindenter
+		if i > 0 {
+			previous = reindenters[i-1]
+		}
 		switch v := el.(type) {
-		case lexer.Token, string:
-			if erw := g.writeWithComma(buf, v, g.IndentLevel); erw != nil {
+		case lexer.Token:
+			if erw := g.writeWithComma(buf, v, previous, g.IndentLevel); erw != nil {
 				return erw
 			}
-		case Reindenter:
+		default:
 			if eri := v.Reindent(buf); eri != nil {
 				return eri
 			}

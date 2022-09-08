@@ -258,10 +258,12 @@ func TestParseTokens(t *testing.T) {
 			},
 		},
 	}
+
+	p := New()
 	for _, toPin := range tests {
 		tt := toPin
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseTokens(tt.tokenSource)
+			got, err := p.Parse(tt.tokenSource)
 			require.NoError(t, err)
 
 			for i, actual := range got {

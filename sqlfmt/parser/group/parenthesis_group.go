@@ -47,18 +47,30 @@ func (p *Parenthesis) Reindent(buf *bytes.Buffer) error {
 func (p *Parenthesis) writeParenthesis(buf *bytes.Buffer, token lexer.Token, indent int, hasStartBefore bool) {
 	switch {
 	case token.Type == lexer.STARTPARENTHESIS && p.ColumnCount == 0 && p.InColumnArea:
-		buf.WriteString(fmt.Sprintf("%s%s%s%s", NewLine, strings.Repeat(DoubleWhiteSpace, indent), DoubleWhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s%s%s",
+			NewLine,
+			strings.Repeat(DoubleWhiteSpace, indent),
+			DoubleWhiteSpace,
+			token.FormattedValue(),
+		))
 	case token.Type == lexer.STARTPARENTHESIS:
-		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
-	case token.Type == lexer.ENDPARENTHESIS:
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue(),
+		))
+	case token.Type == lexer.ENDPARENTHESIS, token.Type == lexer.COMMA, token.Type == lexer.CASTOPERATOR:
 		buf.WriteString(token.FormattedValue())
-	case token.Type == lexer.COMMA:
+	case token.Type == lexer.TYPE && p.hasCastBefore:
 		buf.WriteString(token.FormattedValue())
 	case hasStartBefore:
 		buf.WriteString(token.FormattedValue())
-	case strings.HasPrefix(token.FormattedValue(), "::"):
-		buf.WriteString(token.FormattedValue())
 	default:
-		buf.WriteString(fmt.Sprintf("%s%s", WhiteSpace, token.FormattedValue()))
+		buf.WriteString(fmt.Sprintf(
+			"%s%s",
+			WhiteSpace,
+			token.FormattedValue(),
+		))
 	}
 }

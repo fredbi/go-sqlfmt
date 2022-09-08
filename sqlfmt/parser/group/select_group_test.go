@@ -29,21 +29,15 @@ func TestReindentSelectGroup(t *testing.T) {
 		buf := &bytes.Buffer{}
 		selectGroup := NewSelect(tt.tokenSource)
 
-		if err := selectGroup.Reindent(buf); err != nil {
-			t.Errorf("unexpected error: %v", err)
-
-			return
-		}
+		require.NoError(t, selectGroup.Reindent(buf))
 
 		got := buf.String()
-		if tt.want != got {
-			t.Errorf("want%#v, got %#v", tt.want, got)
-		}
+		require.Equal(t, tt.want, got)
 	}
 }
 
 func TestIncrementIndentLevel(t *testing.T) {
 	s := NewSelect(nil)
 	s.IncrementIndentLevel(1)
-	require.EqualValues(t, 1, s.IndentLevel)
+	require.Equal(t, 1, s.IndentLevel)
 }

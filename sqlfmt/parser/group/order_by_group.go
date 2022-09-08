@@ -21,18 +21,23 @@ func NewOrderBy(element []Reindenter, opts ...Option) *OrderBy {
 func (o *OrderBy) Reindent(buf *bytes.Buffer) error {
 	o.start = 0
 
-	element, err := o.processPunctuation()
+	elements, err := o.processPunctuation()
 	if err != nil {
 		return err
 	}
 
-	for _, el := range separate(element) {
+	reindenters := separate(elements)
+	for i, el := range reindenters {
+		var previous Reindenter
+		if i > 0 {
+			previous = reindenters[i-1]
+		}
 		switch v := el.(type) {
-		case lexer.Token, string:
-			if erw := o.writeWithComma(buf, v, o.IndentLevel); erw != nil {
+		case lexer.Token:
+			if erw := o.writeWithComma(buf, v, previous, o.IndentLevel); erw != nil {
 				return erw
 			}
-		case Reindenter:
+		default:
 			if eri := v.Reindent(buf); eri != nil {
 				return eri
 			}

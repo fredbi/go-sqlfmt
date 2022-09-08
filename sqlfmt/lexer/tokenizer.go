@@ -1,58 +1,42 @@
 package lexer
 
 import (
-	"bufio"
 	"bytes"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer/internal/reader"
+	"github.com/fredbi/go-sqlfmt/sqlfmt/lexer/internal/scanner"
 	"github.com/pkg/errors"
 )
 
 // Tokenizer tokenizes SQL statements.
 type Tokenizer struct {
-	r      *bufio.Reader
-	w      *bytes.Buffer // w  writes token value. It resets its value when the end of token appears
+	*scanner.RuneScanner
+	w      runeWriter // w  writes token value. It resets its value when the end of token appears
 	result []Token
 	*options
 }
 
-const (
-	ErrEOF = "EOF"
-)
-
-// rune that can't be contained in SQL statement
-// TODO: I have to make better solution of making rune of eof in stead of using '∂'.
-var eof rune
-
-func init() {
-	eof = '∂'
-}
-
-// value of literal.
-const (
-	Comma            = ","
-	StartParenthesis = "("
-	EndParenthesis   = ")"
-	StartBracket     = "["
-	EndBracket       = "]"
-	StartBrace       = "{"
-	EndBrace         = "}"
-	SingleQuote      = "'"
-	NewLine          = "\n"
-)
-
 // NewTokenizer creates Tokenizer.
 func NewTokenizer(src string, opts ...Option) *Tokenizer {
-	return &Tokenizer{
-		r:       bufio.NewReader(strings.NewReader(src)),
-		w:       &bytes.Buffer{},
+	// initialize the package with postgres as default
+	onceRegisterDefaults.Do(registerDefaults)
+
+	t := &Tokenizer{
+		RuneScanner: scanner.NewRuneScanner(src,
+			scanner.WithReaderOptions(reader.WithLookAhead(maxOperatorLength+1)),
+		),
+		w:       newRuneWriter(),
 		options: defaultOptions(opts...),
 	}
+
+	return t
 }
 
 // GetTokens returns tokens for parsing.
 func (t *Tokenizer) GetTokens() ([]Token, error) {
-	tokens, err := t.Tokenize()
+	tokens, err := t.tokenize()
 	if err != nil {
 		return nil, errors.Wrap(err, "Tokenize failed")
 	}
@@ -62,21 +46,57 @@ func (t *Tokenizer) GetTokens() ([]Token, error) {
 	// replace all tokens without whitespaces and new lines
 	// if "AND" or "OR" appears after new line, token value will be ANDGROUP, ORGROUP
 	for i, tok := range tokens {
-		if tok.Type == AND && tokens[i-1].Type == NEWLINE {
-			andGroupToken := Token{Type: ANDGROUP, Value: tok.Value, options: t.options}
-			result = append(result, andGroupToken)
-
+		switch {
+		case tok.Type == WS || tok.Type == NEWLINE:
 			continue
-		}
 
-		if tok.Type == OR && tokens[i-1].Type == NEWLINE {
-			orGroupToken := Token{Type: ORGROUP, Value: tok.Value, options: t.options}
-			result = append(result, orGroupToken)
+		// TODO: get a better understanding of these "ORGROUP" and "ANDGROUP" -- to me doesn't look right in a lexer
+		case tok.Type == AND && tokens[i-1].Type == NEWLINE:
+			tok = Token{Type: ANDGROUP, Value: tok.Value, options: t.options}
 
+		case tok.Type == OR && tokens[i-1].Type == NEWLINE:
+			tok = Token{Type: ORGROUP, Value: tok.Value, options: t.options}
+
+		case tok.Type == LEFT && i < len(tokens)-1 && tokens[i+1].Type == STARTPARENTHESIS:
+			// LEFT depends on context: may be keyword or function
+			tok = Token{Type: FUNCTION, Value: tok.Value, options: t.options}
+
+		case tok.Type == OPERATOR && tok.Value == "::":
+			tok = Token{Type: CASTOPERATOR, Value: tok.Value, options: t.options}
+
+		// composed types
+		case i < len(tokens)-1 && isComposedType(tok, tokens[i+1]):
+			// build single type from double token
+			composed := composedToken(tok.Value, tokens[i+1].Value)
+			val, _ := typeWithParentMap.Get([]byte(composed))
+			ttype := val.(TokenType)
+			tok = Token{Type: ttype, Value: composed, options: t.options}
+
+		case i > 0 && isComposedType(tokens[i-1], tok):
 			continue
-		}
 
-		if tok.Type == WS || tok.Type == NEWLINE {
+		// literal constant builders
+		case i < len(tokens)-1 && isConstantBuilder(tok, tokens[i+1]):
+			val := strings.ToUpper(tok.Value)
+			valType, _ := constantBuilders.Get([]byte(val))
+			ttype := valType.(TokenType)
+			tok = Token{Type: ttype, Value: concatToken(val, tokens[i+1].Value), options: t.options}
+		case i > 0 && isConstantBuilder(tokens[i-1], tok):
+			continue
+
+		// unicode constant builder
+		case i < len(tokens)-2 && isUnicodeBuilder(tok, tokens[i+1], tokens[i+2]):
+			tok = Token{
+				Type: STRING, Value: concatToken(
+					strings.ToUpper(tok.Value),
+					tokens[i+1].Value,
+					tokens[i+2].Value,
+				),
+				options: t.options,
+			}
+		case i > 0 && i < len(tokens)-1 && isUnicodeBuilder(tokens[i-1], tok, tokens[i+1]):
+			continue
+		case i > 1 && isUnicodeBuilder(tokens[i-2], tokens[i-1], tok):
 			continue
 		}
 
@@ -86,131 +106,125 @@ func (t *Tokenizer) GetTokens() ([]Token, error) {
 	return result, nil
 }
 
-// Tokenize analyses every rune in SQL statement
+// tokenize analyses every rune in SQL statement
 // every token is identified when whitespace appears.
-func (t *Tokenizer) Tokenize() ([]Token, error) {
+func (t *Tokenizer) tokenize() ([]Token, error) {
 	for {
 		isEOF, err := t.scan()
+		if err != nil {
+			return nil, err
+		}
 
 		if isEOF {
 			break
-		}
-
-		if err != nil {
-			return nil, err
 		}
 	}
 
 	return t.result, nil
 }
 
-// unread undoes t.r.readRune method to get last character.
-func (t *Tokenizer) unread() { _ = t.r.UnreadRune() }
-
-func isWhiteSpace(ch rune) bool {
-	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '　'
-}
-
-func isComma(ch rune) bool {
-	return ch == ','
-}
-
-func isStartParenthesis(ch rune) bool {
-	return ch == '('
-}
-
-func isEndParenthesis(ch rune) bool {
-	return ch == ')'
-}
-
-func isSingleQuote(ch rune) bool {
-	return ch == '\''
-}
-
-func isStartBracket(ch rune) bool {
-	return ch == '['
-}
-
-func isEndBracket(ch rune) bool {
-	return ch == ']'
-}
-
-func isStartBrace(ch rune) bool {
-	return ch == '{'
-}
-
-func isEndBrace(ch rune) bool {
-	return ch == '}'
-}
-
-// scan scans each character and appends to result until "eof" appears
-// when it finishes scanning all characters, it returns true.
+// scan scans each character and appends to result until "eof" appears.
+//
+// When it has finished scanning all characters, it returns true.
 func (t *Tokenizer) scan() (bool, error) {
-	ch, _, err := t.r.ReadRune()
+	ch, err := t.Read()
 	if err != nil {
-		if err.Error() != ErrEOF {
-			return false, errors.Wrap(err, "read rune failed")
-		}
-
-		ch = eof
+		return false, errors.Wrap(err, "read rune failed")
 	}
 
 	switch {
-	case ch == eof:
+	case isEOF(ch):
 		tok := Token{Type: EOF, Value: "EOF", options: t.options}
 		t.result = append(t.result, tok)
 
 		return true, nil
 	case isWhiteSpace(ch):
-		if err := t.scanWhiteSpace(); err != nil {
+		// skip white space
+		if err := t.scanWhiteSpace(ch); err != nil {
 			return false, err
 		}
 
 		return false, nil
-	// extract string
+
 	case isSingleQuote(ch):
-		if err := t.scanString(); err != nil {
+		// extract quoted string
+		if err := t.scanString(ch); err != nil {
 			return false, err
 		}
 
 		return false, nil
+
+	case isDoubleQuote(ch):
+		// extract double quoted string
+		if err := t.scanDoubleQuotedString(ch); err != nil {
+			return false, err
+		}
+
+		return false, nil
+
 	case isComma(ch):
 		token := Token{Type: COMMA, Value: Comma, options: t.options}
 		t.result = append(t.result, token)
 
 		return false, nil
+
+	case isSemiColon(ch):
+		token := Token{Type: SEMICOLON, Value: SemiColon, options: t.options}
+		t.result = append(t.result, token)
+
+		return false, nil
+
 	case isStartParenthesis(ch):
 		token := Token{Type: STARTPARENTHESIS, Value: StartParenthesis, options: t.options}
 		t.result = append(t.result, token)
 
 		return false, nil
+
 	case isEndParenthesis(ch):
 		token := Token{Type: ENDPARENTHESIS, Value: EndParenthesis, options: t.options}
 		t.result = append(t.result, token)
 
 		return false, nil
+
 	case isStartBracket(ch):
 		token := Token{Type: STARTBRACKET, Value: StartBracket, options: t.options}
 		t.result = append(t.result, token)
 
 		return false, nil
+
 	case isEndBracket(ch):
 		token := Token{Type: ENDBRACKET, Value: EndBracket, options: t.options}
 		t.result = append(t.result, token)
 
 		return false, nil
+
 	case isStartBrace(ch):
 		token := Token{Type: STARTBRACE, Value: StartBrace, options: t.options}
 		t.result = append(t.result, token)
 
 		return false, nil
+
 	case isEndBrace(ch):
 		token := Token{Type: ENDBRACE, Value: EndBrace, options: t.options}
 		t.result = append(t.result, token)
 
 		return false, nil
+
 	default:
-		if err := t.scanIdent(); err != nil {
+		if isOperator(ch) {
+			// operators may not be separated by whitespace
+			// extract operator starting with this rune
+			ok, err := t.scanOperator(ch)
+			if err != nil {
+				return false, err
+			}
+
+			if ok {
+				return false, nil
+			}
+		}
+
+		if err := t.scanIdent(ch); err != nil {
 			return false, err
 		}
 
@@ -218,33 +232,33 @@ func (t *Tokenizer) scan() (bool, error) {
 	}
 }
 
-func (t *Tokenizer) scanWhiteSpace() error {
-	t.unread()
+func (t *Tokenizer) scanWhiteSpace(start rune) error {
+	var err error
+	ch := start
 
+LOOP:
 	for {
-		ch, _, err := t.r.ReadRune()
-		if err != nil {
-			if err.Error() == ErrEOF {
-				break
-			} else {
-				return err
-			}
+		switch {
+		case isEOF(ch):
+			break LOOP
+		case !isWhiteSpace(ch):
+			t.Unread()
+
+			break LOOP
+		default:
+			_, _ = t.w.WriteRune(ch)
 		}
 
-		if !isWhiteSpace(ch) {
-			t.unread()
-
-			break
-		} else {
-			t.w.WriteRune(ch)
+		ch, err = t.Read()
+		if err != nil {
+			return err
 		}
 	}
 
+	// NOTE(fred): for the moment, we maintain NEWLINE as there are a few subtle lexing semantics
+	// that remain hooked on the present of a NEWLINE (e.g. multiline literals).
 	if strings.Contains(t.w.String(), "\n") {
 		tok := Token{Type: NEWLINE, Value: "\n", options: t.options}
-		t.result = append(t.result, tok)
-	} else {
-		tok := Token{Type: WS, Value: t.w.String(), options: t.options}
 		t.result = append(t.result, tok)
 	}
 
@@ -253,30 +267,28 @@ func (t *Tokenizer) scanWhiteSpace() error {
 	return nil
 }
 
-// scan string token including single quotes.
-func (t *Tokenizer) scanString() error {
-	var counter int
-	t.unread()
+// scanString extracts a string token surrounded by single quotes.
+func (t *Tokenizer) scanString(start rune) error {
+	var err error
+	ch := start
 
 	for {
-		ch, _, err := t.r.ReadRune()
+		_, _ = t.w.WriteRune(ch)
+
+		ch, err = t.Read()
 		if err != nil {
-			if err.Error() == ErrEOF {
-				break
-			} else {
-				return err
-			}
+			return err
 		}
 
-		// ignore the first single quote
-		if counter != 0 && isSingleQuote(ch) {
-			t.w.WriteRune(ch)
+		if isSingleQuote(ch) {
+			_, _ = t.w.WriteRune(ch)
 
 			break
-		} else {
-			t.w.WriteRune(ch)
 		}
-		counter++
+
+		if isEOF(ch) {
+			break
+		}
 	}
 
 	tok := Token{Type: STRING, Value: t.w.String(), options: t.options}
@@ -286,64 +298,158 @@ func (t *Tokenizer) scanString() error {
 	return nil
 }
 
-// append all ch to result until ch is a white space
-// if ident is keyword, Type will be the keyword and value will be the uppercase keyword.
-func (t *Tokenizer) scanIdent() error {
-	t.unread()
+// scanDoubleQuotedString extracts a string token surrounded by double quotes.
+func (t *Tokenizer) scanDoubleQuotedString(start rune) error {
+	var err error
+	ch := start
 
-LOOP:
 	for {
-		ch, _, err := t.r.ReadRune()
+		_, _ = t.w.WriteRune(ch)
+
+		ch, err = t.Read()
 		if err != nil {
-			if err.Error() == ErrEOF {
-				break
-			} else {
-				return err
-			}
+			return err
 		}
-		switch {
-		case isWhiteSpace(ch):
-			t.unread()
 
-			break LOOP
-		case isComma(ch):
-			t.unread()
+		if isDoubleQuote(ch) {
+			_, _ = t.w.WriteRune(ch)
 
-			break LOOP
-		case isStartParenthesis(ch):
-			t.unread()
+			break
+		}
 
-			break LOOP
-		case isEndParenthesis(ch):
-			t.unread()
-
-			break LOOP
-		case isSingleQuote(ch):
-			t.unread()
-
-			break LOOP
-		case isStartBracket(ch):
-			t.unread()
-
-			break LOOP
-		case isEndBracket(ch):
-			t.unread()
-
-			break LOOP
-		case isStartBrace(ch):
-			t.unread()
-
-			break LOOP
-		case isEndBrace(ch):
-			t.unread()
-
-			break LOOP
-		default:
-			t.w.WriteRune(ch)
+		if isEOF(ch) {
+			break
 		}
 	}
 
-	t.append(t.w.String())
+	tok := Token{Type: STRING, Value: t.w.String(), options: t.options}
+	t.result = append(t.result, tok)
+	t.w.Reset()
+
+	return nil
+}
+
+// isOperatorToken returns an operator token if it finds one, starting from some valid operator rune.
+//
+// The index returned indicates the number of extra consumed runes from the reader:
+// this allows the caller to rewind.
+func (t *Tokenizer) isOperatorToken(start rune) (Token, bool, int, error) {
+	var (
+		counter int
+		token   string
+		err     error
+	)
+
+	w := bytes.NewBuffer(make([]byte, 0, maxOperatorBytes+1))
+	ch := start
+
+	for {
+		_, _ = w.WriteRune(ch)
+
+		if _, ok := operatorsIndex.Get(w.Bytes()); ok {
+			// There is a legit operator corresponding to that sequence.
+			// Keep it, and find out if we have a longer match.
+			token = w.String()
+		}
+
+		if !existsOperatorWithPrefix(w.Bytes()) {
+			break
+		}
+
+		ch, err = t.Read()
+		if err != nil {
+			return Token{}, false, counter, err
+		}
+
+		if isEOF(ch) {
+			break // do not increment count whenever EOF is reached
+		}
+
+		counter++
+	}
+
+	if token != "" {
+		tok := Token{Type: OPERATOR, Value: token, options: t.options}
+
+		return tok, true, counter, nil
+	}
+
+	return Token{}, false, counter, nil
+}
+
+// scanOperator extracts an operator.
+func (t *Tokenizer) scanOperator(ch rune) (bool, error) {
+	token, ok, counter, err := t.isOperatorToken(ch)
+	if ok {
+		t.result = append(t.result, token)
+		counter = counter - utf8.RuneCountInString(token.Value) + 1
+	}
+
+	// rewind to the next rune after the search
+	t.Rewind(counter)
+
+	return ok, err
+}
+
+func existsOperatorWithPrefix(key []byte) bool {
+	iterator := operatorsIndex.Root().Iterator()
+	iterator.SeekPrefix(key)
+	_, _, ok := iterator.Next()
+
+	return ok
+}
+
+// scanIdent appends all runes to result until a separator or a recognized operator is found.
+func (t *Tokenizer) scanIdent(start rune) error {
+	var (
+		counter int
+		err     error
+	)
+
+	ch := start
+LOOP:
+	for {
+		switch {
+		case isEOF(ch):
+			if ident := t.w.String(); len(ident) > 0 {
+				t.append(t.w.String())
+			}
+
+			return nil
+		case isSeparator(ch):
+			break LOOP
+
+		default:
+			if isOperator(ch) {
+				_, isOperator, consumed, ert := t.isOperatorToken(ch)
+				if ert != nil {
+					return ert
+				}
+
+				// rewind looked-ahead runes
+				t.Rewind(consumed)
+				if isOperator {
+					break LOOP
+				}
+			}
+
+			counter = 0
+			_, _ = t.w.WriteRune(ch)
+
+			ch, err = t.Read()
+			if err != nil {
+				return err
+			}
+
+			counter++
+		}
+	}
+
+	if ident := t.w.String(); len(ident) > 0 {
+		t.append(t.w.String())
+	}
+
+	t.Rewind(counter)
 
 	return nil
 }
@@ -369,136 +475,70 @@ func (t *Tokenizer) append(v string) {
 }
 
 func (t *Tokenizer) isSQLKeyWord(v string) (TokenType, bool) {
-	if ttype, ok := sqlKeywordMap[v]; ok {
+	key := []byte(v)
+	val, ok := sqlKeywordMap.Get(key)
+	if ok {
+		return val.(TokenType), ok
+	}
+
+	val, ok = typeWithParentMap.Get(key)
+	if !ok {
+		return IDENT, false
+	}
+	ttype := val.(TokenType)
+
+	if ttype == TYPE ||
+		ttype == OPERATOR ||
+		ttype == RESERVEDVALUE {
 		return ttype, ok
-	} else if ttype, ok := typeWithParenMap[v]; ok {
-		if r, _, err := t.r.ReadRune(); err == nil && string(r) == StartParenthesis {
-			t.unread()
+	}
 
-			return ttype, ok
+	if ttype == FUNCTION {
+		t.Unread()
+		if r, err := t.Read(); err == nil {
+			// TODO: some functions may be called without parenthesis --> consider as RESERVED_VALUES ??
+			if isStartParenthesis(r) {
+				return ttype, true
+			}
 		}
-		t.unread()
-
-		return IDENT, ok
 	}
 
 	return IDENT, false
 }
 
-var (
-	sqlKeywordMap    map[string]TokenType
-	typeWithParenMap map[string]TokenType
-)
+func composedToken(values ...string) string {
+	return strings.Join(values, " ")
+}
 
-func init() {
-	sqlKeywordMap = map[string]TokenType{
-		"ALL":         ALL,
-		"AND":         AND,
-		"AS":          AS,
-		"ASC":         ASC,
-		"AT":          AT,
-		"BETWEEN":     BETWEEN,
-		"BY":          BY,
-		"CASE":        CASE,
-		"COLLATE":     COLLATE,
-		"CROSS":       CROSS,
-		"DELETE":      DELETE,
-		"DESC":        DESC,
-		"DISTINCT":    DISTINCT,
-		"DISTINCTROW": DISTINCTROW,
-		"DO":          DO,
-		"ELSE":        ELSE,
-		"END":         END,
-		"EXCEPT":      EXCEPT,
-		"EXISTS":      EXISTS,
-		"FETCH":       FETCH,
-		"FILTER":      FILTER,
-		"FIRST":       FIRST,
-		"FOR":         FOR,
-		"FROM":        FROM,
-		"GROUP":       GROUP,
-		"HAVING":      HAVING,
-		"IN":          IN,
-		"INNER":       INNER,
-		"INSERT":      INSERT,
-		"INTERSECT":   INTERSECT,
-		"INTO":        INTO,
-		"IS":          IS,
-		"JOIN":        JOIN,
-		"LAST":        LAST,
-		"LEFT":        LEFT,
-		"LIKE":        LIKE,
-		"LIMIT":       LIMIT,
-		"LOCK":        LOCK,
-		"NATURAL":     NATURAL,
-		"NOT":         NOT,
-		"NULL":        NULL,
-		"NULLS":       NULLS,
-		"OFFSET":      OFFSET,
-		"ON":          ON,
-		"OR":          OR,
-		"ORDER":       ORDER,
-		"OUTER":       OUTER,
-		"OVERLAPS":    OVERLAPS,
-		"RETURNING":   RETURNING,
-		"RIGHT":       RIGHT,
-		"ROWS":        ROWS,
-		"SELECT":      SELECT,
-		"SET":         SET,
-		"THEN":        THEN,
-		"UNION":       UNION,
-		"UPDATE":      UPDATE,
-		"USING":       USING,
-		"VALUES":      VALUES,
-		"WHEN":        WHEN,
-		"WHERE":       WHERE,
-		"WITH":        WITH,
-		"WITHIN":      WITHIN,
-		"ZONE":        ZONE,
+func concatToken(values ...string) string {
+	return strings.Join(values, "")
+}
+
+func isComposedType(tok, next Token) bool {
+	if !(tok.Type == TYPE && next.Type == VARYING ||
+		tok.Type == DOUBLE && next.Type == PRECISION) {
+		return false
 	}
 
-	typeWithParenMap = map[string]TokenType{
-		"ARRAY_AGG":       FUNCTION,
-		"AVG":             FUNCTION,
-		"BIG":             TYPE,
-		"BIGSERIAL":       TYPE,
-		"BIT":             TYPE,
-		"BOOLEAN":         TYPE,
-		"CAST":            FUNCTION,
-		"CHAR":            TYPE,
-		"COALESCE":        FUNCTION,
-		"COUNT":           FUNCTION,
-		"CUSTOMTYPE":      TYPE,
-		"DATE_PART":       FUNCTION,
-		"DATE_TRUNC":      FUNCTION,
-		"DEC":             TYPE,
-		"DECIMAL":         TYPE,
-		"EXTRACT":         FUNCTION,
-		"FLOAT":           TYPE,
-		"GREATEST":        FUNCTION,
-		"INTEGER":         TYPE,
-		"INTERVAL":        TYPE,
-		"LEAST":           FUNCTION,
-		"MAX":             FUNCTION,
-		"MIN":             FUNCTION,
-		"NUMERIC":         TYPE,
-		"OVER":            FUNCTION,
-		"OVERLAY":         FUNCTION,
-		"PERCENTILE_DISC": FUNCTION,
-		"POSITION":        FUNCTION,
-		"RANDOM":          FUNCTION,
-		"ROW_NUMBER":      FUNCTION,
-		"SECOND":          TYPE,
-		"SUBSTRING":       FUNCTION,
-		"SUM":             FUNCTION,
-		"TEXT":            TYPE,
-		"TIME":            TYPE,
-		"TIMESTAMP":       TYPE,
-		"TRIM":            FUNCTION,
-		"VARBIT":          TYPE,
-		"VARCHAR":         TYPE,
-		"XMLCONCAT":       FUNCTION,
-		"XMLELEMENT":      FUNCTION,
-		"XMLFOREST":       FUNCTION,
+	_, ok := typeWithParentMap.Get([]byte(composedToken(tok.Value, next.Value)))
+
+	return ok
+}
+
+func isConstantBuilder(tok, next Token) bool {
+	if !(tok.Type == IDENT && len(tok.Value) == 1 && next.Type == STRING &&
+		len(next.Value) > 0 && strings.ContainsRune(next.Value[:1], '\'')) {
+		return false
 	}
+
+	val := bytes.ToUpper([]byte(tok.Value))
+	_, ok := constantBuilders.Get(val)
+
+	return ok
+}
+
+func isUnicodeBuilder(tok, next, nnext Token) bool {
+	return tok.Type == IDENT && len(tok.Value) == 1 && strings.EqualFold(tok.Value, "U") &&
+		next.Type == OPERATOR && len(next.Value) == 1 && strings.ContainsRune(next.Value, '&') &&
+		nnext.Type == STRING && len(nnext.Value) > 0 && strings.ContainsRune(nnext.Value[:1], '\'')
 }

@@ -19,13 +19,14 @@ import (
 func Format(src string, opts ...Option) (string, error) {
 	o := defaultOptions(opts...)
 
-	t := lexer.NewTokenizer(src, o.ToLexerOptions()...)
-	tokens, err := t.GetTokens()
+	tokenizer := lexer.NewTokenizer(src, o.ToLexerOptions()...)
+	tokens, err := tokenizer.GetTokens()
 	if err != nil {
 		return src, errors.Wrap(err, "Tokenize failed")
 	}
 
-	rs, err := parser.ParseTokens(tokens, o.ToParserOptions()...)
+	p := parser.New(o.ToParserOptions()...)
+	rs, err := p.Parse(tokens)
 	if err != nil {
 		return src, errors.Wrap(err, "ParseTokens failed")
 	}
@@ -60,6 +61,7 @@ func getFormattedStmt(rs []group.Reindenter, distance int) (string, error) {
 	return buf.String(), nil
 }
 
+// TOOD: make this an option of the Reindenter.
 func putDistance(src string, distance int) string {
 	scanner := bufio.NewScanner(strings.NewReader(src))
 
